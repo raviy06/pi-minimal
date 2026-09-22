@@ -135,7 +135,9 @@ export function wrapBuiltinTools(pi: ExtensionAPI, ctx: ExtensionContext): void 
   let shellPath: string | undefined
   let autoResizeImages: boolean | undefined
   try {
-    const settings = SettingsManager.create(ctx.cwd)
+    const settings = SettingsManager.create(ctx.cwd, undefined, {
+      projectTrusted: ctx.isProjectTrusted(),
+    })
     commandPrefix = settings.getShellCommandPrefix()
     shellPath = settings.getShellPath()
     autoResizeImages = settings.getImageAutoResize()

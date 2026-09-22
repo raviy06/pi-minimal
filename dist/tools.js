@@ -81,7 +81,9 @@ export function wrapBuiltinTools(pi, ctx) {
     let shellPath;
     let autoResizeImages;
     try {
-        const settings = SettingsManager.create(ctx.cwd);
+        const settings = SettingsManager.create(ctx.cwd, undefined, {
+            projectTrusted: ctx.isProjectTrusted(),
+        });
         commandPrefix = settings.getShellCommandPrefix();
         shellPath = settings.getShellPath();
         autoResizeImages = settings.getImageAutoResize();
