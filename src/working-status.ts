@@ -118,7 +118,7 @@ export function installWorkingStatus(pi: ExtensionAPI): () => void {
     thought = undefined
     lastMessage = ""
     tools.clear()
-    ctx?.ui.setWorkingMessage()
+    if (ctx?.mode === "tui") ctx.ui.setWorkingMessage()
   }
 
   const paint = (now = Date.now()) => {
@@ -142,10 +142,12 @@ export function installWorkingStatus(pi: ExtensionAPI): () => void {
   }
 
   pi.on("session_start", (_event, next) => {
+    if (next.mode !== "tui") return
     ctx = next
   })
 
   pi.on("agent_start", () => {
+    if (!ctx || ctx.mode !== "tui") return
     if (phase === "idle") {
       tools.clear()
       thought = undefined

@@ -206,6 +206,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		install(pi)
 		t.after(() => emit("session_shutdown"))
 		await emit("session_start")
+		await emit("agent_start")
+		await emit("agent_settled")
 
 		assert.equal(
 			uiCalls.filter((call) => ["setHeader", "setFooter", "setWidget"].includes(call.method)).length,
@@ -213,6 +215,10 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		)
 		assert.equal(
 			uiCalls.filter((call) => call.method === "setHiddenThinkingLabel" || call.method === "setWorkingIndicator").length,
+			0,
+		)
+		assert.equal(
+			uiCalls.filter((call) => call.method === "setWorkingMessage").length,
 			0,
 		)
 		assert.equal(
