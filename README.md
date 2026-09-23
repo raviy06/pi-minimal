@@ -26,24 +26,6 @@ Git installation also works:
 pi install git:github.com/raviy06/pi-minimal
 ```
 
-## Publishing
-
-Create the GitHub environment before saving the npm trusted publisher:
-
-1. Open **Settings → Environments → New environment**.
-2. Set **Environment name** to `npm`.
-
-Then add the trusted publisher at **npm → Trusted Publisher** with:
-
-- **Organization or user:** `raviy06`
-- **Repository:** `pi-minimal`
-- **Workflow filename:** `publish.yml`
-- **Environment name:** `npm`
-- **Label:** leave empty
-- **Publishing access:** `Public`
-
-Publish a GitHub Release to run the workflow. No `NPM_TOKEN` is required.
-
 Do not load this package beside the live `grok-chrome` extension. Disable or remove `grok-chrome` before enabling `pi-minimal`.
 
 ## Configuration
