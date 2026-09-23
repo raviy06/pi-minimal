@@ -118,8 +118,11 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
       projectTrusted: ctx.isProjectTrusted(),
     })
     hideWidgets = config.hideGauntletWidgets
-    pinChrome(ctx, "session_start")
+    installHeader(ctx)
+    installFooter(ctx, () => siblings)
+    installCwd(ctx)
     wrapBuiltinTools(pi, ctx)
+    pinChrome(ctx, "session_start")
     ctx.ui.setHiddenThinkingLabel("◆ Thought")
     ctx.ui.setWorkingIndicator()
     setTimeout(() => pinChrome(ctx, "session_settle"), 0)

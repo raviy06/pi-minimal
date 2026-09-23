@@ -42,6 +42,7 @@ function createFake(options: {
 	const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>()
 	const uiCalls: Call[] = []
 	const execCalls: Call[] = []
+	const registerCalls: Call[] = []
 	const allCalls: Call[] = []
 
 	const record = (target: Call[], method: string, args: unknown[]) => {
@@ -86,7 +87,9 @@ function createFake(options: {
 			}
 			return { stdout: "", stderr: "", code: 1, killed: false }
 		},
-		registerTool() {},
+		registerTool(...args: unknown[]) {
+			record(registerCalls, "registerTool", args)
+		},
 	} as unknown as ExtensionAPI
 
 	const emit = async (event: string, payload: unknown = {}) => {
@@ -95,7 +98,7 @@ function createFake(options: {
 		}
 	}
 
-	return { pi, ctx, uiCalls, execCalls, allCalls, emit }
+	return { pi, ctx, uiCalls, execCalls, registerCalls, allCalls, emit }
 }
 
 function widgetCalls(uiCalls: Call[], key: string): Call[] {
@@ -143,6 +146,36 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 			execCalls.filter((call) => call.args[0] === "herdr").length,
 			0,
 		)
+	})
+
+	test("TUI session_start installs chrome and wraps tools before the first reclaim", async (t) => {
+		const { agentDir, cwd } = setupDirs(t)
+		process.env[AGENT_DIR_ENV] = agentDir
+		delete process.env.HERDR_ENV
+		t.after(restoreEnv)
+
+		const { pi, allCalls, emit } = createFake({ cwd })
+		install(pi)
+		t.after(() => emit("session_shutdown"))
+		await emit("session_start")
+
+		const firstHeader = allCalls.findIndex((call) => call.method === "setHeader")
+		const firstFooter = allCalls.findIndex((call) => call.method === "setFooter")
+		const firstCwd = allCalls.findIndex(
+			(call) => call.method === "setWidget" && call.args[0] === "tw-cwd" && typeof call.args[1] === "function",
+		)
+		const firstWrap = allCalls.findIndex((call) => call.method === "registerTool")
+		const firstReclaim = allCalls.findIndex((call) => call.method === "setEditorComponent")
+
+		assert.ok(firstHeader >= 0, "header installed")
+		assert.ok(firstFooter >= 0, "footer installed")
+		assert.ok(firstCwd >= 0, "cwd installed")
+		assert.ok(firstWrap >= 0, "tools wrapped")
+		assert.ok(firstReclaim >= 0, "reclaim ran")
+		assert.ok(firstHeader < firstReclaim, "header before reclaim")
+		assert.ok(firstFooter < firstReclaim, "footer before reclaim")
+		assert.ok(firstCwd < firstReclaim, "cwd before reclaim")
+		assert.ok(firstWrap < firstReclaim, "wrap before reclaim")
 	})
 
 	test("does not clear Gauntlet widgets when config disables hiding", async (t) => {
