@@ -7,6 +7,13 @@ A Pi coding-agent package.
 - Node.js `>=22.19.0`
 - Pi `>=0.84.4`
 
+No other Pi extension is required. Pi supplies the peer packages used by this extension.
+
+Optional integrations:
+
+- `pi-gauntlet`: supplies the phase and task data shown in the footer. Its widgets are hidden by default.
+- Herdr: sibling status appears only when Pi is running inside Herdr.
+
 ## Installation
 
 ```bash
