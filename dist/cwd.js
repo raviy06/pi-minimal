@@ -77,11 +77,10 @@ export function installCwd(ctx) {
             const window = usage?.contextWindow || ctx.model?.contextWindow;
             const used = usage?.tokens;
             let tokenStr = theme.fg("dim", "?/?");
-            let pct = 0;
             let bar = theme.fg("dim", "░░░░░░░░");
             let pctStr = theme.fg("dim", "?%");
             if (typeof used === "number" && window) {
-                pct = Math.max(0, Math.min(100, Math.round((used / window) * 100)));
+                const pct = Math.max(0, Math.min(100, Math.round((used / window) * 100)));
                 tokenStr = theme.fg("dim", `${formatTokens(used)}/${formatTokens(window)}`);
                 const hot = pct >= 85;
                 bar = meter(pct, theme.fg(hot ? "warning" : "accent", "█"), theme.fg("dim", "░"));

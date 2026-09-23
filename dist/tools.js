@@ -3,7 +3,7 @@ import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { activityBullet, rowIsRunning } from "./activity.js";
 import { createLiveWatch } from "./live-watch.js";
 import { nextGroupedRow, toolItem } from "./tool-rows.js";
-let live = createLiveWatch(400);
+const live = createLiveWatch(400);
 export function stopLiveWatch() {
     live.stop();
 }
@@ -74,7 +74,9 @@ function wrapOne(pi, kind, factory) {
             },
         });
     }
-    catch { }
+    catch {
+        // A missing built-in tool leaves the rest of the compact renderers available.
+    }
 }
 export function wrapBuiltinTools(pi, ctx) {
     let commandPrefix;
@@ -88,7 +90,9 @@ export function wrapBuiltinTools(pi, ctx) {
         shellPath = settings.getShellPath();
         autoResizeImages = settings.getImageAutoResize();
     }
-    catch { }
+    catch {
+        // Tool wrapping still works when optional shell or image settings are unavailable.
+    }
     wrapOne(pi, "bash", () => createBashToolDefinition(ctx.cwd, { commandPrefix, shellPath }));
     wrapOne(pi, "read", () => createReadToolDefinition(ctx.cwd, { autoResizeImages }));
     wrapOne(pi, "edit", () => createEditToolDefinition(ctx.cwd));

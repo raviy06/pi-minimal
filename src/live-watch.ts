@@ -19,7 +19,9 @@ export function createLiveWatch(intervalMs = 400): LiveWatch {
     for (const invalidate of snapshot) {
       try {
         invalidate()
-      } catch {}
+      } catch {
+        // A single renderer failure must not stop the shared activity frame.
+      }
     }
   }
 
