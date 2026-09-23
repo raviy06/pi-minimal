@@ -22,11 +22,16 @@
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
+    "@eslint/js": "^10.0.1",
     "@types/node": "*",
-    "typescript": "*"
+    "eslint": "^10.11.0",
+    "typescript": "*",
+    "typescript-eslint": "^8.70.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.tests.json && node --test test-dist/test/*.test.js"
+    "test": "tsc -p tsconfig.tests.json && node --test test-dist/test/*.test.js",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

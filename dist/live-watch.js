@@ -9,7 +9,9 @@ export function createLiveWatch(intervalMs = 400) {
             try {
                 invalidate();
             }
-            catch { }
+            catch {
+                // A single renderer failure must not stop the shared activity frame.
+            }
         }
     };
     return {

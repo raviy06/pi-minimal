@@ -45,7 +45,7 @@ type RenderContext = {
   expanded?: boolean
 }
 
-let live = createLiveWatch(400)
+const live = createLiveWatch(400)
 
 export function stopLiveWatch(): void {
   live.stop()
@@ -104,11 +104,15 @@ function activityBlock(
   }
 }
 
-function wrapOne(
-  pi: ExtensionAPI,
-  kind: ToolKind,
-  factory: () => any,
-) {
+type WrappableTool = {
+  name: string
+  label: string
+  description: string
+  parameters: Parameters<ExtensionAPI["registerTool"]>[0]["parameters"]
+  execute: Parameters<ExtensionAPI["registerTool"]>[0]["execute"]
+}
+
+function wrapOne(pi: ExtensionAPI, kind: ToolKind, factory: () => WrappableTool) {
   try {
     const tool = factory()
     pi.registerTool({
@@ -127,7 +131,9 @@ function wrapOne(
         return expandedContent(result as ToolResult, options)
       },
     })
-  } catch {}
+  } catch {
+    // A missing built-in tool leaves the rest of the compact renderers available.
+  }
 }
 
 export function wrapBuiltinTools(pi: ExtensionAPI, ctx: ExtensionContext): void {
@@ -141,13 +147,15 @@ export function wrapBuiltinTools(pi: ExtensionAPI, ctx: ExtensionContext): void 
     commandPrefix = settings.getShellCommandPrefix()
     shellPath = settings.getShellPath()
     autoResizeImages = settings.getImageAutoResize()
-  } catch {}
+  } catch {
+    // Tool wrapping still works when optional shell or image settings are unavailable.
+  }
 
-  wrapOne(pi, "bash", () => createBashToolDefinition(ctx.cwd, { commandPrefix, shellPath }))
-  wrapOne(pi, "read", () => createReadToolDefinition(ctx.cwd, { autoResizeImages }))
-  wrapOne(pi, "edit", () => createEditToolDefinition(ctx.cwd))
-  wrapOne(pi, "write", () => createWriteToolDefinition(ctx.cwd))
-  wrapOne(pi, "grep", () => createGrepToolDefinition(ctx.cwd))
-  wrapOne(pi, "find", () => createFindToolDefinition(ctx.cwd))
-  wrapOne(pi, "ls", () => createLsToolDefinition(ctx.cwd))
+  wrapOne(pi, "bash", () => createBashToolDefinition(ctx.cwd, { commandPrefix, shellPath }) as WrappableTool)
+  wrapOne(pi, "read", () => createReadToolDefinition(ctx.cwd, { autoResizeImages }) as WrappableTool)
+  wrapOne(pi, "edit", () => createEditToolDefinition(ctx.cwd) as WrappableTool)
+  wrapOne(pi, "write", () => createWriteToolDefinition(ctx.cwd) as WrappableTool)
+  wrapOne(pi, "grep", () => createGrepToolDefinition(ctx.cwd) as WrappableTool)
+  wrapOne(pi, "find", () => createFindToolDefinition(ctx.cwd) as WrappableTool)
+  wrapOne(pi, "ls", () => createLsToolDefinition(ctx.cwd) as WrappableTool)
 }
