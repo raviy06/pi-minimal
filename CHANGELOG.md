@@ -21,6 +21,8 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 - The Publish workflow upgrades npm to >= 11.5.1 (required for OIDC trusted
   publishing) and is re-runnable: an existing tag whose version is missing
   from npm is published without re-tagging.
+- `repository`, `homepage`, and `bugs` fields in `package.json`, required for
+  npm provenance verification.
 
 ### Changed
 - The release-triggered publish workflow is now a manual, token-based fallback

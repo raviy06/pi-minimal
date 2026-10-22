@@ -10,6 +10,7 @@ test("package manifest exposes the committed extension", () => {
 	assert.equal(pkg.type, "module")
 	assert.deepEqual(pkg.engines, { node: ">=22.19.0" })
 	assert.deepEqual(pkg.keywords, ["pi-package"])
+	assert.deepEqual(pkg.repository, { type: "git", url: "git+https://github.com/raviy06/pi-minimal.git" })
 	assert.deepEqual(pkg.pi, { extensions: ["./dist/index.js"], themes: ["./themes/minimal-dark.json"] })
 	assert.deepEqual(pkg.peerDependencies, {
 		"@earendil-works/pi-coding-agent": "*",

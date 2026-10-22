@@ -10,6 +10,14 @@
   "keywords": [
     "pi-package"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raviy06/pi-minimal.git"
+  },
+  "homepage": "https://github.com/raviy06/pi-minimal#readme",
+  "bugs": {
+    "url": "https://github.com/raviy06/pi-minimal/issues"
+  },
   "pi": {
     "extensions": [
       "./dist/index.js"
