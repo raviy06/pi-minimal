@@ -18,6 +18,9 @@ Releases are cut automatically: when the `version` in `package.json` changes on
   (CHANGELOG section + generated notes + package tarball), records a deployment
   to the `npm` environment, and publishes to npm via OIDC trusted publishing.
 - `CHANGELOG.md` and a "Releasing" section in the README.
+- The Publish workflow upgrades npm to >= 11.5.1 (required for OIDC trusted
+  publishing) and is re-runnable: an existing tag whose version is missing
+  from npm is published without re-tagging.
 
 ### Changed
 - The release-triggered publish workflow is now a manual, token-based fallback

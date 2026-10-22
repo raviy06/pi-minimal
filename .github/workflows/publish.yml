@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.check.outputs.publish }}
+      tag_exists: ${{ steps.check.outputs.tag_exists }}
       version: ${{ steps.check.outputs.version }}
       tag: ${{ steps.check.outputs.tag }}
       previous_tag: ${{ steps.check.outputs.previous_tag }}
@@ -53,21 +54,25 @@ jobs:
           previous_tag=$(git tag --list 'v*' --sort=-v:refname | grep -vx "$tag" | head -n1 || true)
           echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
 
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "::notice::$tag already exists; nothing to publish."
+          tag_exists=false
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then tag_exists=true; fi
+          echo "tag_exists=$tag_exists" >> "$GITHUB_OUTPUT"
+
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "::notice::$name@$version is already on npm; nothing to publish."
             echo "publish=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          if npm view "$name@$version" version >/dev/null 2>&1; then
-            echo "::warning::$name@$version is already on npm but untagged; tagging only."
-            echo "publish=tag-only" >> "$GITHUB_OUTPUT"; exit 0
-          fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "::notice::New version $version detected (previous tag: ${previous_tag:-none})."
+          if [ "$tag_exists" = true ]; then
+            echo "::notice::$tag exists but $name@$version is not on npm; publishing (re-run)."
+          else
+            echo "::notice::New version $version detected (previous tag: ${previous_tag:-none})."
+          fi
 
   release:
     name: Tag, release, publish ${{ needs.detect.outputs.tag }}
     needs: detect
-    if: needs.detect.outputs.publish != 'false'
+    if: needs.detect.outputs.publish == 'true'
     runs-on: ubuntu-latest
     environment:
       name: npm
@@ -137,18 +142,32 @@ jobs:
       - name: Create tag and GitHub Release
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "pi-minimal $VERSION" "$GITHUB_SHA"
-          git push origin "refs/tags/$TAG"
-          gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
-            --title "pi-minimal $VERSION" \
-            --notes-file "${{ steps.notes.outputs.file }}" \
-            --verify-tag
+          if [ "${{ needs.detect.outputs.tag_exists }}" != true ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "pi-minimal $VERSION" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          else
+            echo "Tag $TAG already exists; not re-tagging."
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; updating notes."
+            gh release edit "$TAG" --notes-file "${{ steps.notes.outputs.file }}"
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "pi-minimal $VERSION" \
+              --notes-file "${{ steps.notes.outputs.file }}" \
+              --verify-tag
+          fi
+
+      - name: Upgrade npm for trusted publishing
+        # Node 22 bundles npm 10.x; OIDC trusted publishing needs npm >= 11.5.1.
+        run: |
+          npm install -g npm@latest
+          npm --version
 
       - name: Publish to npm (trusted publishing)
-        if: needs.detect.outputs.publish == 'true'
         # No NODE_AUTH_TOKEN: npm authenticates with the job's OIDC token and
         # generates provenance automatically.
         run: npm publish --access public
