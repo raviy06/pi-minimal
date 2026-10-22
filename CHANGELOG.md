@@ -13,14 +13,17 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 ## [0.2.2] - 2026-10-22
 
 ### Added
-- Fenced code renders as a framed block (`╭─ lang ───` / `│ code` / `╰───`)
-  instead of literal ``` lines, keeping syntax highlighting. pi-tui exposes no
-  hook for this, so pi-minimal post-processes the code token's rendered lines.
+- Fenced code renders as a closed box (`╭─ lang ─╮` / `│ code │` / `╰───╯`)
+  instead of literal ``` lines, keeping syntax highlighting; long lines wrap
+  inside the box. pi-tui exposes no hook for this, so pi-minimal post-processes
+  the code token's rendered lines.
 
 ### Changed
 - Chrome margin (status line, footer, turn rule, tool rows) follows pi's
   `outputPad` setting so it lines up with transcript text. Set
   `editorPaddingX` to the same value for a flush left edge.
+- Chrome modules tolerate a stale `chrome` module after `/reload`, which
+  previously could crash the renderer when the package was updated in place.
 - `mdCodeBlockBorder` in `minimal-dark` is a faint grey again (it frames the
   box now) instead of background-coloured.
 

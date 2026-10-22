@@ -4,10 +4,13 @@
  * the separate `editorPaddingX` setting (default 0); set it to the same value for a flush
  * left edge.
  */
-let margin = 1;
+const KEY = Symbol.for("pi-minimal.chrome-margin");
+const store = globalThis;
+/** Kept for modules linked against an older copy of this file across a hot reload. */
+export const CHROME_MARGIN = 1;
 export function chromeMargin() {
-    return margin;
+    return store[KEY] ?? CHROME_MARGIN;
 }
 export function setChromeMargin(value) {
-    margin = value === 0 ? 0 : 1;
+    store[KEY] = value === 0 ? 0 : 1;
 }

@@ -1,7 +1,9 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import path from "node:path";
-import { chromeMargin } from "./chrome.js";
+import * as chrome from "./chrome.js";
 import { formatGitState } from "./git-state.js";
+/** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
+const margin = () => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1));
 export function formatCwd(cwd) {
     const home = process.env.HOME || process.env.USERPROFILE || "";
     if (!home)
@@ -95,7 +97,7 @@ export function installCwd(ctx, sources) {
             dispose: unsub,
             invalidate() { },
             render(width) {
-                const inner = Math.max(8, width - chromeMargin() * 2);
+                const inner = Math.max(8, width - margin() * 2);
                 const id = ctx.model?.id || "no-model";
                 const icon = theme.fg("accent", modelIcon(id));
                 const name = theme.fg("text", shortModel(id));
@@ -136,7 +138,7 @@ export function installCwd(ctx, sources) {
                         .join(theme.fg("dim", " · ")));
                 }
                 const row = splitRow(left, right, inner);
-                return [`${" ".repeat(chromeMargin())}${row}`];
+                return [`${" ".repeat(margin())}${row}`];
             },
         };
     }, { placement: "aboveEditor" });

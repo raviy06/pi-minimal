@@ -1,7 +1,11 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui"
-import { chromeMargin } from "./chrome.js"
+import * as chrome from "./chrome.js"
 import { formatElapsed } from "./working-status.js"
+
+/** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
+const margin = (): number => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1))
+
 
 export const TURN_ENTRY_TYPE = "pi-minimal.turn"
 
@@ -83,10 +87,10 @@ export function installTurnRule(pi: ExtensionAPI): () => void {
     const color = entry.data.outcome === "completed" ? "borderMuted" : entry.data.outcome === "aborted" ? "warning" : "error"
     return {
       render(width: number): string[] {
-        const inner = Math.max(0, width - chromeMargin() * 2)
+        const inner = Math.max(0, width - margin() * 2)
         const rule = ruleLine(inner, label)
         const colored = rule.replace(label, theme.fg("dim", label))
-        return ["", `${" ".repeat(chromeMargin())}${theme.fg(color, colored)}`]
+        return ["", `${" ".repeat(margin())}${theme.fg(color, colored)}`]
       },
       invalidate() {},
     }

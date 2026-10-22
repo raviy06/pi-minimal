@@ -1,14 +1,14 @@
-import { Markdown, visibleWidth } from "@earendil-works/pi-tui"
+import { Markdown, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui"
 
 /**
  * pi-tui renders fenced code as literal ``` lines. Pi exposes no hook for the code token, so
- * pi-minimal post-processes the rendered lines of every `code` token into a framed block:
+ * pi-minimal post-processes the rendered lines of every `code` token into a closed box:
  *
- *   ╭─ json ───────────────
- *   │ { "a": 1 }
- *   ╰──────────────────────
+ *   ╭─ json ──────────────╮
+ *   │ { "a": 1 }          │
+ *   ╰─────────────────────╯
  *
- * The right edge is left open so long code lines wrap naturally instead of breaking the frame.
+ * Code lines longer than the box are wrapped inside it so the right edge stays intact.
  */
 
 type CodeToken = { type?: string; lang?: string; text?: string }
@@ -28,20 +28,25 @@ export function frameCodeLines(lines: string[], lang: string | undefined, width:
   const trailer = lines.slice(end)
   const body = lines.slice(1, end - 1)
   const indent = theme.codeBlockIndent ?? "  "
-  const inner = Math.max(4, width)
+  const outer = Math.max(6, width)
+  // "│ " + content + " │"
+  const innerWidth = outer - 4
 
-  // "╭─ lang ─────" : corner + lead dash + label + rule == inner
   const label = lang ? ` ${lang} ` : ""
-  const topRule = "─".repeat(Math.max(1, inner - 2 - visibleWidth(label)))
-  const top = theme.codeBlockBorder(`╭─${label}${topRule}`)
-  const bottom = theme.codeBlockBorder(`╰${"─".repeat(Math.max(1, inner - 1))}`)
+  const topRule = "─".repeat(Math.max(1, outer - 3 - visibleWidth(label)))
+  const top = theme.codeBlockBorder(`╭─${label}${topRule}╮`)
+  const bottom = theme.codeBlockBorder(`╰${"─".repeat(outer - 2)}╯`)
   const edge = theme.codeBlockBorder("│")
 
-  const framed = body.map((line) => {
+  const framed: string[] = []
+  for (const line of body) {
     const content = line.startsWith(indent) ? line.slice(indent.length) : line
-    return `${edge} ${content}`
-  })
-  if (framed.length === 0) framed.push(edge)
+    for (const piece of wrapTextWithAnsi(content, innerWidth)) {
+      const pad = Math.max(0, innerWidth - visibleWidth(piece))
+      framed.push(`${edge} ${piece}${" ".repeat(pad)} ${edge}`)
+    }
+  }
+  if (framed.length === 0) framed.push(`${edge} ${" ".repeat(innerWidth)} ${edge}`)
   return [top, ...framed, bottom, ...trailer]
 }
 

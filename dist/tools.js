@@ -1,11 +1,13 @@
 import { Container, truncateToWidth } from "@earendil-works/pi-tui";
 import { rowIsRunning } from "./activity.js";
-import { chromeMargin } from "./chrome.js";
+import * as chrome from "./chrome.js";
 import { createLiveWatch } from "./live-watch.js";
 import { bashBody, formatDuration, formatOutcome, layoutRow, resultText, rowGlyph, toolItem, } from "./tool-rows.js";
+/** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
+const margin = () => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1));
 const live = createLiveWatch(400);
 /** Left indent of every tool row: chrome margin plus one cell so rows sit inside message text. */
-const rowIndent = () => chromeMargin() + 1;
+const rowIndent = () => margin() + 1;
 /** Max lines of output shown when a row is expanded. */
 const EXPANDED_MAX_LINES = 400;
 export function stopLiveWatch() {
