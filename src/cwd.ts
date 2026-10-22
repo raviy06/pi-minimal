@@ -1,7 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui"
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
 import path from "node:path"
-import { CHROME_MARGIN } from "./chrome.js"
+import { chromeMargin } from "./chrome.js"
 import { formatGitState, type GitState } from "./git-state.js"
 import type { Sibling } from "./herdr.js"
 
@@ -103,7 +103,7 @@ export function installCwd(ctx: ExtensionContext, sources: StatusLineSources): v
         dispose: unsub,
         invalidate() {},
         render(width: number): string[] {
-          const inner = Math.max(8, width - CHROME_MARGIN * 2)
+          const inner = Math.max(8, width - chromeMargin() * 2)
           const id = ctx.model?.id || "no-model"
           const icon = theme.fg("accent", modelIcon(id))
           const name = theme.fg("text", shortModel(id))
@@ -147,7 +147,7 @@ export function installCwd(ctx: ExtensionContext, sources: StatusLineSources): v
             )
           }
           const row = splitRow(left, right, inner)
-          return [`${" ".repeat(CHROME_MARGIN)}${row}`]
+          return [`${" ".repeat(chromeMargin())}${row}`]
         },
       }
     },

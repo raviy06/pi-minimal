@@ -11,11 +11,15 @@ import { installWorkingStatus } from "./working-status.js";
 import { installTurnRule } from "./turn-rule.js";
 import { installTranscript } from "./transcript.js";
 import { createGitState } from "./git-state.js";
+import { installCodeBox } from "./code-box.js";
+import { setChromeMargin } from "./chrome.js";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
 export default function piMinimalExtension(pi) {
     const stopWorkingStatus = installWorkingStatus(pi);
     const stopTurnRule = installTurnRule(pi);
     installToolRenderers(pi);
     installTranscript(pi);
+    installCodeBox();
     let fastTimer;
     let slowTimer;
     let stealTimer;
@@ -154,6 +158,13 @@ export default function piMinimalExtension(pi) {
         });
         hideWidgets = config.hideGauntletWidgets;
         currentCwd = ctx.cwd;
+        try {
+            const settings = SettingsManager.create(ctx.cwd, undefined, { projectTrusted: ctx.isProjectTrusted() });
+            setChromeMargin(settings.getOutputPad());
+        }
+        catch {
+            // Keep the default margin when settings are unavailable.
+        }
         installHeader(ctx);
         installChromeFooter(ctx);
         installStatusLine(ctx);

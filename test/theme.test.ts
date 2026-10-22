@@ -37,8 +37,8 @@ test("minimal-dark variable references resolve", () => {
 	}
 })
 
-test("minimal-dark hides code fences and neutralises tool backgrounds", () => {
-	assert.equal(theme.colors.mdCodeBlockBorder, "bg")
+test("minimal-dark frames code quietly and neutralises tool backgrounds", () => {
+	assert.equal(theme.colors.mdCodeBlockBorder, "faint")
 	assert.equal(theme.colors.mdCodeBlock, "text")
 	assert.equal(theme.colors.toolSuccessBg, theme.colors.toolPendingBg)
 	assert.notEqual(theme.colors.mdHeading, theme.colors.warning)

@@ -50,7 +50,7 @@
 		"mdLinkUrl": "dim",
 		"mdCode": "violet",
 		"mdCodeBlock": "text",
-		"mdCodeBlockBorder": "bg",
+		"mdCodeBlockBorder": "faint",
 		"mdQuote": "muted",
 		"mdQuoteBorder": "faint",
 		"mdHr": "faint",

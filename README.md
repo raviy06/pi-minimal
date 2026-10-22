@@ -35,7 +35,9 @@ Do not load this package beside the live `grok-chrome` extension. Disable or rem
 - **Thinking gutter** – thinking paragraphs are prefixed with `┊` so they read as secondary.
 - **Status line** – one line above the editor: model · thinking level · context meter (amber at 70 %, red at 90 %) · cwd · `⎇ branch ±dirty` · Herdr siblings.
 - **Footer** – key hints appear only when the agent is idle and the editor is empty; `/compact` is suggested under context pressure.
-- **Theme** – ships `minimal-dark`: neutral tool backgrounds, visible user-message tint, dimmer thinking text, violet headings (yellow is reserved for warnings), and code-fence lines coloured like the background so fenced code reads as a padded block. Select it in `/settings` → Theme, or set `"theme": "minimal-dark"`.
+- **Code blocks** – fenced code renders as a framed block with the language as its title, keeping syntax highlighting, instead of literal ``` lines.
+- **Alignment** – chrome follows pi's `outputPad` setting. Pi's editor uses the separate `editorPaddingX` setting (default `0`); set `"editorPaddingX": 1` for a flush left edge with the transcript.
+- **Theme** – ships `minimal-dark`: neutral tool backgrounds, visible user-message tint, dimmer thinking text, violet headings (yellow is reserved for warnings), and faint code-block frames. Select it in `/settings` → Theme, or set `"theme": "minimal-dark"`.
 
 ## Configuration
 

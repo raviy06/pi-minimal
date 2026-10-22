@@ -1,5 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { CHROME_MARGIN } from "./chrome.js";
+import { chromeMargin } from "./chrome.js";
 import { formatElapsed } from "./working-status.js";
 export const TURN_ENTRY_TYPE = "pi-minimal.turn";
 export function formatClock(epochMs) {
@@ -70,10 +70,10 @@ export function installTurnRule(pi) {
         const color = entry.data.outcome === "completed" ? "borderMuted" : entry.data.outcome === "aborted" ? "warning" : "error";
         return {
             render(width) {
-                const inner = Math.max(0, width - CHROME_MARGIN * 2);
+                const inner = Math.max(0, width - chromeMargin() * 2);
                 const rule = ruleLine(inner, label);
                 const colored = rule.replace(label, theme.fg("dim", label));
-                return ["", `${" ".repeat(CHROME_MARGIN)}${theme.fg(color, colored)}`];
+                return ["", `${" ".repeat(chromeMargin())}${theme.fg(color, colored)}`];
             },
             invalidate() { },
         };

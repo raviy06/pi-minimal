@@ -1,6 +1,6 @@
 import { keyHint } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import { CHROME_MARGIN } from "./chrome.js";
+import { chromeMargin } from "./chrome.js";
 import { formatTrackerLines } from "./tracker.js";
 /**
  * Key hints are shown only when nothing else needs the line: idle agent, empty editor. Otherwise
@@ -24,7 +24,7 @@ export function installFooter(ctx, sources) {
             dispose: unsub,
             invalidate() { },
             render(width) {
-                const inner = Math.max(8, width - CHROME_MARGIN * 2);
+                const inner = Math.max(8, width - chromeMargin() * 2);
                 const out = [];
                 const hints = footerHints(sources, [
                     keyHint("tui.input.submit", "send"),
@@ -33,10 +33,10 @@ export function installFooter(ctx, sources) {
                 ].filter(Boolean));
                 if (hints.length > 0) {
                     const line = theme.fg("dim", hints.join("  ·  "));
-                    out.push(`${" ".repeat(CHROME_MARGIN)}${truncateToWidth(line, inner, "")}`);
+                    out.push(`${" ".repeat(chromeMargin())}${truncateToWidth(line, inner, "")}`);
                 }
                 for (const extra of formatTrackerLines(ctx, theme)) {
-                    out.push(`${" ".repeat(CHROME_MARGIN)}${truncateToWidth(extra, inner, "")}`);
+                    out.push(`${" ".repeat(chromeMargin())}${truncateToWidth(extra, inner, "")}`);
                 }
                 return out;
             },

@@ -1,6 +1,6 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import path from "node:path";
-import { CHROME_MARGIN } from "./chrome.js";
+import { chromeMargin } from "./chrome.js";
 import { formatGitState } from "./git-state.js";
 export function formatCwd(cwd) {
     const home = process.env.HOME || process.env.USERPROFILE || "";
@@ -95,7 +95,7 @@ export function installCwd(ctx, sources) {
             dispose: unsub,
             invalidate() { },
             render(width) {
-                const inner = Math.max(8, width - CHROME_MARGIN * 2);
+                const inner = Math.max(8, width - chromeMargin() * 2);
                 const id = ctx.model?.id || "no-model";
                 const icon = theme.fg("accent", modelIcon(id));
                 const name = theme.fg("text", shortModel(id));
@@ -136,7 +136,7 @@ export function installCwd(ctx, sources) {
                         .join(theme.fg("dim", " · ")));
                 }
                 const row = splitRow(left, right, inner);
-                return [`${" ".repeat(CHROME_MARGIN)}${row}`];
+                return [`${" ".repeat(chromeMargin())}${row}`];
             },
         };
     }, { placement: "aboveEditor" });
