@@ -163,8 +163,9 @@ jobs:
 
       - name: Upgrade npm for trusted publishing
         # Node 22 bundles npm 10.x; OIDC trusted publishing needs npm >= 11.5.1.
+        # npm 12 requires Node >= 22.22.2, so stay on the 11.x line for Node 22.19.
         run: |
-          npm install -g npm@latest
+          npm install -g npm@11
           npm --version
 
       - name: Publish to npm (trusted publishing)
