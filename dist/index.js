@@ -8,8 +8,13 @@ import { hideGauntletWidgets } from "./tracker.js";
 import { stopLiveWatch, wrapBuiltinTools } from "./tools.js";
 import { applyReclaim, reclaimPolicy } from "./reclaim.js";
 import { installWorkingStatus } from "./working-status.js";
+import { installTurnRule } from "./turn-rule.js";
+import { installTranscript } from "./transcript.js";
+import { createGitState } from "./git-state.js";
 export default function piMinimalExtension(pi) {
     const stopWorkingStatus = installWorkingStatus(pi);
+    const stopTurnRule = installTurnRule(pi);
+    installTranscript(pi);
     let fastTimer;
     let slowTimer;
     let stealTimer;
@@ -17,6 +22,9 @@ export default function piMinimalExtension(pi) {
     let siblings;
     let generation = 0;
     let hideWidgets = true;
+    let busy = false;
+    let currentCwd = process.cwd();
+    const gitState = createGitState(pi, () => currentCwd);
     const stopTimers = () => {
         if (fastTimer)
             clearInterval(fastTimer);
@@ -103,8 +111,29 @@ export default function piMinimalExtension(pi) {
             },
             chrome: () => {
                 installHeader(ctx);
-                installFooter(ctx, () => siblings);
+                installChromeFooter(ctx);
             },
+        });
+    };
+    const contextPct = (ctx) => {
+        const usage = ctx.getContextUsage?.();
+        const window = usage?.contextWindow || ctx.model?.contextWindow;
+        if (typeof usage?.tokens !== "number" || !window)
+            return undefined;
+        return Math.max(0, Math.min(100, Math.round((usage.tokens / window) * 100)));
+    };
+    const installChromeFooter = (ctx) => {
+        installFooter(ctx, {
+            busy: () => busy,
+            editorText: () => (typeof ctx.ui.getEditorText === "function" ? ctx.ui.getEditorText() : ""),
+            contextPct: () => contextPct(ctx),
+        });
+    };
+    const installStatusLine = (ctx) => {
+        installCwd(ctx, {
+            gitState: gitState.get,
+            siblings: () => siblings,
+            onGitChange: gitState.onChange,
         });
     };
     const pinChrome = (ctx, reason) => {
@@ -112,7 +141,7 @@ export default function piMinimalExtension(pi) {
         if (ctx.mode !== "tui" || !reclaimPolicy(reason).reinstallChrome)
             return;
         ctx.ui.setWidget("tw-cwd", undefined);
-        installCwd(ctx);
+        installStatusLine(ctx);
     };
     pi.on("session_start", async (_event, ctx) => {
         if (ctx.mode !== "tui")
@@ -123,10 +152,12 @@ export default function piMinimalExtension(pi) {
             projectTrusted: ctx.isProjectTrusted(),
         });
         hideWidgets = config.hideGauntletWidgets;
+        currentCwd = ctx.cwd;
         installHeader(ctx);
-        installFooter(ctx, () => siblings);
-        installCwd(ctx);
+        installChromeFooter(ctx);
+        installStatusLine(ctx);
         wrapBuiltinTools(pi, ctx);
+        void gitState.refresh(true);
         pinChrome(ctx, "session_start");
         ctx.ui.setHiddenThinkingLabel("◆ Thought");
         ctx.ui.setWorkingIndicator();
@@ -139,15 +170,26 @@ export default function piMinimalExtension(pi) {
             await probe(ctx);
         }
     });
+    pi.on("agent_start", () => {
+        busy = true;
+    });
+    pi.on("agent_end", () => {
+        busy = false;
+        void gitState.refresh();
+    });
     pi.on("turn_end", (_event, ctx) => {
         pinChrome(ctx, "turn_end");
+        void gitState.refresh();
     });
     pi.on("tool_execution_end", (_event, ctx) => {
         pinChrome(ctx, "tool_execution_end");
+        void gitState.refresh();
     });
     pi.on("session_shutdown", async () => {
+        busy = false;
         stopTimers();
         stopWorkingStatus();
+        stopTurnRule();
         stopLiveWatch();
         generation += 1;
         siblings = undefined;

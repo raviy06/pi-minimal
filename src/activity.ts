@@ -10,7 +10,3 @@ export function rowIsRunning(context: ActivityContext): boolean {
   if (context.isPartial === false) return false
   return true
 }
-
-export function activityBullet(running: boolean, frame: 0 | 1): "◆" | "◇" {
-  return running && frame === 1 ? "◇" : "◆"
-}

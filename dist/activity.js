@@ -7,6 +7,3 @@ export function rowIsRunning(context) {
         return false;
     return true;
 }
-export function activityBullet(running, frame) {
-    return running && frame === 1 ? "◇" : "◆";
-}

@@ -1,6 +1,6 @@
 {
   "name": "pi-minimal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "private": false,
@@ -13,6 +13,9 @@
   "pi": {
     "extensions": [
       "./dist/index.js"
+    ],
+    "themes": [
+      "./themes/minimal-dark.json"
     ]
   },
   "peerDependencies": {

@@ -90,6 +90,15 @@ function createFake(options: {
 		registerTool(...args: unknown[]) {
 			record(registerCalls, "registerTool", args)
 		},
+		registerMarkdownTransformer(...args: unknown[]) {
+			record(registerCalls, "registerMarkdownTransformer", args)
+		},
+		registerEntryRenderer(...args: unknown[]) {
+			record(registerCalls, "registerEntryRenderer", args)
+		},
+		appendEntry(...args: unknown[]) {
+			record(registerCalls, "appendEntry", args)
+		},
 	} as unknown as ExtensionAPI
 
 	const emit = async (event: string, payload: unknown = {}) => {
@@ -259,4 +268,26 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 			0,
 		)
 	})
+})
+
+test("agent_end appends a turn summary entry in TUI mode", async (t) => {
+	const { agentDir, cwd } = setupDirs(t)
+	process.env[AGENT_DIR_ENV] = agentDir
+	delete process.env.HERDR_ENV
+	t.after(restoreEnv)
+	const { pi, registerCalls, emit } = createFake({ cwd })
+	install(pi)
+	t.after(() => emit("session_shutdown"))
+	await emit("session_start")
+	await emit("agent_start")
+	await emit("tool_execution_end", { toolCallId: "a" })
+	await emit("tool_execution_end", { toolCallId: "b" })
+	await emit("agent_end", { messages: [{ role: "assistant", stopReason: "stop" }] })
+	const appended = registerCalls.filter((c) => c.method === "appendEntry")
+	assert.equal(appended.length, 1)
+	assert.equal(appended[0].args[0], "pi-minimal.turn")
+	const data = appended[0].args[1] as { tools: number; outcome: string }
+	assert.equal(data.tools, 2)
+	assert.equal(data.outcome, "completed")
+	assert.ok(registerCalls.some((c) => c.method === "registerEntryRenderer" && c.args[0] === "pi-minimal.turn"))
 })
