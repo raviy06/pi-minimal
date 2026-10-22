@@ -1,0 +1,41 @@
+name: Release (manual fallback)
+
+# Normal releases are fully automatic: bump the version in package.json on main
+# and .github/workflows/publish.yml tags, releases, and publishes via trusted
+# publishing. Use this only to re-run the npm publish for an existing release
+# when the automated path fails; it authenticates with the NPM_TOKEN secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/pi-minimal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: git diff --exit-code -- dist
+      - run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
