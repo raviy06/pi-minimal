@@ -37,6 +37,10 @@ test("frameCodeLines handles empty blocks and missing language", () => {
 test("installCodeBox patches pi-tui's Markdown renderer idempotently", () => {
 	assert.equal(installCodeBox(), true)
 	assert.equal(installCodeBox(), true)
+	// A reload re-points the installed wrapper at the current framer.
+	const slot = Symbol.for("pi-minimal.code-box.frame")
+	const slots = globalThis as unknown as Record<symbol, unknown>
+	assert.equal(slots[slot], frameCodeLines)
 	const id = (s: string) => s
 	const mdTheme = {
 		heading: id, link: id, linkUrl: id, code: id, codeBlock: id, codeBlockBorder: id, quote: id, quoteBorder: id,

@@ -18,6 +18,12 @@ type MarkdownThemeLike = {
 }
 
 const PATCHED = Symbol.for("pi-minimal.code-box")
+/** Current framing implementation. Lives on globalThis so a /reload swaps the behaviour of the
+ *  wrapper that an earlier load already installed on pi-tui's shared Markdown prototype. */
+const FRAME_SLOT = Symbol.for("pi-minimal.code-box.frame")
+
+type Framer = (lines: string[], lang: string | undefined, width: number, theme: MarkdownThemeLike) => string[]
+const slots = globalThis as unknown as Record<symbol, Framer | undefined>
 
 export function frameCodeLines(lines: string[], lang: string | undefined, width: number, theme: MarkdownThemeLike): string[] {
   if (lines.length < 2) return lines
@@ -52,8 +58,13 @@ export function frameCodeLines(lines: string[], lang: string | undefined, width:
 
 type RenderToken = (this: { theme: MarkdownThemeLike }, token: CodeToken, width: number, next?: string, style?: unknown) => string[]
 
-/** Patch pi-tui's Markdown renderer once per process. Returns false when the renderer is not patchable. */
+/**
+ * Patch pi-tui's Markdown renderer. The prototype wrapper is installed once per process; every
+ * call (including after /reload) points it at this module's `frameCodeLines`.
+ * Returns false when the renderer is not patchable.
+ */
 export function installCodeBox(): boolean {
+  slots[FRAME_SLOT] = frameCodeLines
   const proto = Markdown.prototype as unknown as Record<string | symbol, unknown>
   if (proto[PATCHED]) return true
   const original = proto.renderToken
@@ -62,8 +73,10 @@ export function installCodeBox(): boolean {
   proto.renderToken = function (this: { theme: MarkdownThemeLike }, token: CodeToken, width: number, next?: string, style?: unknown) {
     const lines = originalRender.call(this, token, width, next, style)
     if (token?.type !== "code" || !this.theme?.codeBlockBorder) return lines
+    const frame = slots[FRAME_SLOT]
+    if (!frame) return lines
     try {
-      return frameCodeLines(lines, token.lang, width, this.theme)
+      return frame(lines, token.lang, width, this.theme)
     } catch {
       return lines
     }
