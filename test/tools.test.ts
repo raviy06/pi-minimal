@@ -1,48 +1,55 @@
 import assert from "node:assert/strict"
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import test, { type TestContext } from "node:test"
-import {
-	SettingsManager,
-	type ExtensionAPI,
-	type ExtensionContext,
-} from "@earendil-works/pi-coding-agent"
-import { wrapBuiltinTools } from "../src/tools.js"
+import test from "node:test"
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
+import { compactRenderers, installToolRenderers, isToolKind } from "../src/tools.js"
 
-const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR"
-const originalAgentDir = process.env[AGENT_DIR_ENV]
+test("isToolKind recognises the built-in tools only", () => {
+	for (const name of ["bash", "read", "edit", "write", "grep", "find", "ls"]) assert.equal(isToolKind(name), true)
+	assert.equal(isToolKind("codemode"), false)
+	assert.equal(isToolKind("mcp__foo"), false)
+})
 
-function restoreEnv() {
-	if (originalAgentDir === undefined) delete process.env[AGENT_DIR_ENV]
-	else process.env[AGENT_DIR_ENV] = originalAgentDir
-}
+test("installToolRenderers registers a resolver at load time that only claims built-in tools", () => {
+	let resolver: ((name: string, next: () => unknown) => unknown) | undefined
+	const pi = {
+		registerToolRenderer(fn: typeof resolver) {
+			resolver = fn
+		},
+	} as unknown as ExtensionAPI
+	installToolRenderers(pi)
+	assert.ok(resolver, "resolver registered synchronously, before session_start")
+	const fallback = { renderShell: "default" }
+	assert.equal(resolver!("codemode", () => fallback), fallback)
+	const mine = resolver!("bash", () => fallback) as { renderShell?: string }
+	assert.equal(mine.renderShell, "self")
+	assert.equal(typeof (mine as { renderCall?: unknown }).renderCall, "function")
+})
 
-function setupDirs(t: TestContext) {
-	const root = mkdtempSync(join(tmpdir(), "pi-minimal-tools-"))
-	t.after(() => rmSync(root, { recursive: true, force: true }))
-	const agentDir = join(root, "agent")
-	const cwd = join(root, "project")
-	mkdirSync(agentDir)
-	mkdirSync(cwd)
-	return { agentDir, cwd }
-}
+test("installToolRenderers is a no-op on hosts without registerToolRenderer", () => {
+	assert.doesNotThrow(() => installToolRenderers({} as ExtensionAPI))
+})
 
-test("untrusted project does not receive projectTrusted true", (t) => {
-	const { agentDir, cwd } = setupDirs(t)
-	process.env[AGENT_DIR_ENV] = agentDir
-	t.after(restoreEnv)
-
-	const create = t.mock.method(SettingsManager, "create")
-	const pi = { registerTool() {} } as unknown as ExtensionAPI
-	const ctx = {
-		cwd,
-		isProjectTrusted: () => false,
-	} as unknown as ExtensionContext
-
-	wrapBuiltinTools(pi, ctx)
-
-	assert.equal(create.mock.callCount(), 1)
-	const options = create.mock.calls[0].arguments[2] as { projectTrusted?: boolean } | undefined
-	assert.equal(options?.projectTrusted, false)
+test("compactRenderers render a one-line row with the outcome once the result lands", () => {
+	const renderers = compactRenderers("bash")
+	const theme = { fg: (_c: string, s: string) => s } as never
+	const state: Record<string, unknown> = {}
+	const context = {
+		args: { command: "ls" },
+		toolCallId: "t1",
+		invalidate() {},
+		state,
+		isPartial: false,
+		isError: false,
+		durationMs: 1200,
+	} as never
+	const result = renderers.renderResult!(
+		{ content: [{ type: "text", text: "a\nb" }] } as never,
+		{ expanded: false, isPartial: false } as never,
+		theme,
+		context,
+	)
+	assert.ok(result)
+	const row = renderers.renderCall!({ command: "ls" } as never, theme, context)
+	const [line] = row.render(60)
+	assert.match(line, /✓ bash\s+ls\s+2 lines · 1.2s$/)
 })

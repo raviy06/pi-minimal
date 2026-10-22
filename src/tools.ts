@@ -1,14 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent"
-import {
-  createBashToolDefinition,
-  createEditToolDefinition,
-  createFindToolDefinition,
-  createGrepToolDefinition,
-  createLsToolDefinition,
-  createReadToolDefinition,
-  createWriteToolDefinition,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent"
+import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent"
 import { Container, truncateToWidth } from "@earendil-works/pi-tui"
 import { rowIsRunning } from "./activity.js"
 import { createLiveWatch } from "./live-watch.js"
@@ -172,70 +162,50 @@ function activityRow(kind: ToolKind, args: ToolArgs | undefined, theme: Theme, c
   }
 }
 
-type WrappableTool = {
-  name: string
-  label: string
-  description: string
-  parameters: Parameters<ExtensionAPI["registerTool"]>[0]["parameters"]
-  execute: Parameters<ExtensionAPI["registerTool"]>[0]["execute"]
+const TOOL_KINDS: ReadonlySet<string> = new Set<ToolKind>(["bash", "read", "edit", "write", "grep", "find", "ls"])
+
+export function isToolKind(name: string): name is ToolKind {
+  return TOOL_KINDS.has(name)
 }
 
-function wrapOne(pi: ExtensionAPI, kind: ToolKind, factory: () => WrappableTool) {
-  try {
-    const tool = factory()
-    pi.registerTool({
-      ...tool,
-      renderShell: "self",
-      renderCall(args, theme, context) {
-        return activityRow(kind, args as ToolArgs, theme, context as RenderContext)
-      },
-      renderResult(result, options, theme, context) {
-        const renderContext = context as RenderContext
-        const typedResult = result as ToolResultLike
-        if (!renderContext.isPartial) {
-          renderContext.state.done = true
-          renderContext.state.running = false
-          renderContext.state.outcome = formatOutcome(
-            kind,
-            renderContext.args,
-            typedResult,
-            Boolean(renderContext.isError),
-            renderContext.durationMs,
-          )
-          live.unwatch(liveId(renderContext, toolItem(kind, renderContext.args)))
-        }
-        const container = new Container()
-        const errorLine = errorLineBlock(renderContext.state.outcome?.errorLine, theme)
-        if (errorLine && !(options as RenderOptions).expanded) container.addChild(errorLine)
-        if ((options as RenderOptions).expanded) container.addChild(outputBlock(kind, typedResult, theme))
-        return container
-      },
-    })
-  } catch {
-    // A missing built-in tool leaves the rest of the compact renderers available.
+export function compactRenderers(kind: ToolKind): ToolRenderers {
+  return {
+    renderShell: "self",
+    renderCall(args, theme, context) {
+      return activityRow(kind, args as ToolArgs, theme, context as RenderContext)
+    },
+    renderResult(result, options, theme, context) {
+      const renderContext = context as RenderContext
+      const typedResult = result as ToolResultLike
+      if (!renderContext.isPartial) {
+        renderContext.state.done = true
+        renderContext.state.running = false
+        renderContext.state.outcome = formatOutcome(
+          kind,
+          renderContext.args,
+          typedResult,
+          Boolean(renderContext.isError),
+          renderContext.durationMs,
+        )
+        live.unwatch(liveId(renderContext, toolItem(kind, renderContext.args)))
+      }
+      const container = new Container()
+      const errorLine = errorLineBlock(renderContext.state.outcome?.errorLine, theme)
+      if (errorLine && !(options as RenderOptions).expanded) container.addChild(errorLine)
+      if ((options as RenderOptions).expanded) container.addChild(outputBlock(kind, typedResult, theme))
+      return container
+    },
   }
 }
 
-export function wrapBuiltinTools(pi: ExtensionAPI, ctx: ExtensionContext): void {
-  let commandPrefix: string | undefined
-  let shellPath: string | undefined
-  let autoResizeImages: boolean | undefined
-  try {
-    const settings = SettingsManager.create(ctx.cwd, undefined, {
-      projectTrusted: ctx.isProjectTrusted(),
-    })
-    commandPrefix = settings.getShellCommandPrefix()
-    shellPath = settings.getShellPath()
-    autoResizeImages = settings.getImageAutoResize()
-  } catch {
-    // Tool wrapping still works when optional shell or image settings are unavailable.
-  }
-
-  wrapOne(pi, "bash", () => createBashToolDefinition(ctx.cwd, { commandPrefix, shellPath }) as WrappableTool)
-  wrapOne(pi, "read", () => createReadToolDefinition(ctx.cwd, { autoResizeImages }) as WrappableTool)
-  wrapOne(pi, "edit", () => createEditToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "write", () => createWriteToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "grep", () => createGrepToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "find", () => createFindToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "ls", () => createLsToolDefinition(ctx.cwd) as WrappableTool)
+/**
+ * Attach the compact renderers to the built-in tools without re-registering them. Registered at
+ * extension load so a resumed transcript draws its earlier tool calls the same way as new ones.
+ */
+export function installToolRenderers(pi: ExtensionAPI): void {
+  if (typeof pi.registerToolRenderer !== "function") return
+  pi.registerToolRenderer((toolName, next) => {
+    if (!isToolKind(toolName)) return next()
+    return compactRenderers(toolName)
+  })
 }

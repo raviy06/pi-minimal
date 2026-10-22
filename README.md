@@ -5,7 +5,7 @@ A Pi coding-agent package.
 ## Requirements
 
 - Node.js `>=22.19.0`
-- Pi `>=0.84.4`
+- Pi `>=1.4.0` (uses `registerToolRenderer`, `registerEntryRenderer`, `registerMarkdownTransformer`)
 
 No other Pi extension is required. Pi supplies the peer packages used by this extension.
 

@@ -5,7 +5,7 @@ import { installFooter } from "./footer.js"
 import { installCwd } from "./cwd.js"
 import { listSiblings, parseAgentList, parseTabList, type Sibling } from "./herdr.js"
 import { hideGauntletWidgets } from "./tracker.js"
-import { stopLiveWatch, wrapBuiltinTools } from "./tools.js"
+import { installToolRenderers, stopLiveWatch } from "./tools.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
 import { installWorkingStatus } from "./working-status.js"
 import { installTurnRule } from "./turn-rule.js"
@@ -15,6 +15,7 @@ import { createGitState } from "./git-state.js"
 export default function piMinimalExtension(pi: ExtensionAPI): void {
   const stopWorkingStatus = installWorkingStatus(pi)
   const stopTurnRule = installTurnRule(pi)
+  installToolRenderers(pi)
   installTranscript(pi)
   let fastTimer: ReturnType<typeof setInterval> | undefined
   let slowTimer: ReturnType<typeof setInterval> | undefined
@@ -153,7 +154,6 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
     installHeader(ctx)
     installChromeFooter(ctx)
     installStatusLine(ctx)
-    wrapBuiltinTools(pi, ctx)
     void gitState.refresh(true)
     pinChrome(ctx, "session_start")
     ctx.ui.setHiddenThinkingLabel("◆ Thought")

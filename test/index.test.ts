@@ -90,6 +90,9 @@ function createFake(options: {
 		registerTool(...args: unknown[]) {
 			record(registerCalls, "registerTool", args)
 		},
+		registerToolRenderer(...args: unknown[]) {
+			record(registerCalls, "registerToolRenderer", args)
+		},
 		registerMarkdownTransformer(...args: unknown[]) {
 			record(registerCalls, "registerMarkdownTransformer", args)
 		},
@@ -157,7 +160,7 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		)
 	})
 
-	test("TUI session_start installs chrome and wraps tools before the first reclaim", async (t) => {
+	test("TUI session_start installs chrome before the first reclaim and tool renderers at load", async (t) => {
 		const { agentDir, cwd } = setupDirs(t)
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
@@ -173,18 +176,20 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		const firstCwd = allCalls.findIndex(
 			(call) => call.method === "setWidget" && call.args[0] === "tw-cwd" && typeof call.args[1] === "function",
 		)
-		const firstWrap = allCalls.findIndex((call) => call.method === "registerTool")
+		const firstWrap = allCalls.findIndex((call) => call.method === "registerToolRenderer")
+		const firstSessionStart = allCalls.findIndex((call) => call.method === "setHeader")
 		const firstReclaim = allCalls.findIndex((call) => call.method === "setEditorComponent")
 
 		assert.ok(firstHeader >= 0, "header installed")
 		assert.ok(firstFooter >= 0, "footer installed")
 		assert.ok(firstCwd >= 0, "cwd installed")
-		assert.ok(firstWrap >= 0, "tools wrapped")
+		assert.ok(firstWrap >= 0, "tool renderers registered")
+		assert.ok(firstWrap < firstSessionStart, "tool renderers registered before session_start chrome (resume-safe)")
 		assert.ok(firstReclaim >= 0, "reclaim ran")
 		assert.ok(firstHeader < firstReclaim, "header before reclaim")
 		assert.ok(firstFooter < firstReclaim, "footer before reclaim")
 		assert.ok(firstCwd < firstReclaim, "cwd before reclaim")
-		assert.ok(firstWrap < firstReclaim, "wrap before reclaim")
+		assert.equal(allCalls.some((call) => call.method === "registerTool"), false, "built-in tools are not re-registered")
 	})
 
 	test("does not clear Gauntlet widgets when config disables hiding", async (t) => {
