@@ -10,6 +10,19 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-22
+
+### Added
+- Automated releases: when `version` in `package.json` changes on `main`, the
+  Publish workflow verifies the build, tags `vX.Y.Z`, creates a GitHub Release
+  (CHANGELOG section + generated notes + package tarball), records a deployment
+  to the `npm` environment, and publishes to npm via OIDC trusted publishing.
+- `CHANGELOG.md` and a "Releasing" section in the README.
+
+### Changed
+- The release-triggered publish workflow is now a manual, token-based fallback
+  (`release.yml`) for re-publishing an existing tag.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added
@@ -39,6 +52,7 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 - Initial release: header/footer chrome, compact tool activity rows, working
   status line, Herdr sibling status, Gauntlet widget hiding.
 
-[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/raviy06/pi-minimal/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/raviy06/pi-minimal/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/raviy06/pi-minimal/releases/tag/v0.1.0
