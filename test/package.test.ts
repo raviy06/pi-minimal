@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 test("package manifest exposes the committed extension", () => {
 	const pkg = JSON.parse(readFileSync("package.json", "utf8"))
 	assert.equal(pkg.name, "pi-minimal")
-	assert.equal(pkg.version, "0.2.0")
+	assert.equal(pkg.version, "0.2.1")
 	assert.equal(pkg.license, "MIT")
 	assert.equal(pkg.type, "module")
 	assert.deepEqual(pkg.engines, { node: ">=22.19.0" })

@@ -52,3 +52,13 @@ The only supported key is `hideGauntletWidgets`. It defaults to `true`.
 ```json
 { "hideGauntletWidgets": true }
 ```
+
+## Releasing
+
+Releases are automatic. To ship a version:
+
+1. Add a `## [x.y.z] - YYYY-MM-DD` section to `CHANGELOG.md`.
+2. Bump `version` in `package.json` (and the expectation in `test/package.test.ts`), run `npm run build`, commit `dist/`.
+3. Merge to `main`.
+
+The Publish workflow (`.github/workflows/publish.yml`, npm's registered trusted publisher) detects the new version, verifies lint/typecheck/tests/build, tags `vx.y.z`, creates a GitHub Release (CHANGELOG section + auto-generated notes + package tarball), records a deployment to the `npm` environment, and publishes to npm via OIDC trusted publishing (provenance included). Pushes that do not change the version do nothing. `Release (manual fallback)` re-publishes an existing tag with the `NPM_TOKEN` secret if the automated path ever fails.

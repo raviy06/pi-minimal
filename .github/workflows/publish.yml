@@ -1,29 +1,167 @@
 name: Publish
 
+# Publishes automatically when the version in package.json changes on main:
+# verifies the build, tags vX.Y.Z, creates a GitHub Release (CHANGELOG section +
+# auto-generated notes), records a deployment to the "npm" environment, and
+# publishes to npm via trusted publishing (OIDC; no token). Pushes that do not
+# change the version are a no-op.
+#
+# This file name is registered with npm as the trusted publisher for pi-minimal.
+# Renaming it breaks publishing until npm's trusted-publisher config is updated.
+
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
+  deployments: write
   id-token: write
+  pull-requests: read
 
 jobs:
-  publish:
+  detect:
+    name: Detect version change
     runs-on: ubuntu-latest
-    environment: npm
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      previous_tag: ${{ steps.check.outputs.previous_tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          previous_tag=$(git tag --list 'v*' --sort=-v:refname | grep -vx "$tag" | head -n1 || true)
+          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::notice::$tag already exists; nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "::warning::$name@$version is already on npm but untagged; tagging only."
+            echo "publish=tag-only" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::New version $version detected (previous tag: ${previous_tag:-none})."
+
+  release:
+    name: Tag, release, publish ${{ needs.detect.outputs.tag }}
+    needs: detect
+    if: needs.detect.outputs.publish != 'false'
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/pi-minimal/v/${{ needs.detect.outputs.version }}
+    env:
+      VERSION: ${{ needs.detect.outputs.version }}
+      TAG: ${{ needs.detect.outputs.tag }}
+      PREVIOUS_TAG: ${{ needs.detect.outputs.previous_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
           registry-url: https://registry.npmjs.org
           cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
-      - run: git diff --exit-code -- dist
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+          git diff --exit-code -- dist
+
+      - name: Compose release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          notes=release-notes.md
+          : > "$notes"
+
+          # 1. Hand-written section from CHANGELOG.md, if present ("## [X.Y.Z] ..." until next "## ").
+          if [ -f CHANGELOG.md ]; then
+            section=$(awk -v v="$VERSION" '
+              /^## \[/ { if (found) exit; found = index($0, "[" v "]") > 0; next }
+              found && /^\[[^]]+\]: / { exit }
+              found { print }' CHANGELOG.md | sed -e '/./,$!d' -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+            if [ -n "$section" ]; then
+              printf '%s\n\n' "$section" >> "$notes"
+            else
+              echo "::warning::CHANGELOG.md has no section for [$VERSION]; using generated notes only."
+            fi
+          fi
+
+          # 2. GitHub-generated notes (merged PRs / commits since the previous tag).
+          body=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" \
+            ${PREVIOUS_TAG:+-f previous_tag_name="$PREVIOUS_TAG"} --jq .body)
+          printf '%s\n\n' "$body" >> "$notes"
+
+          # 3. Install footer.
+          cat >> "$notes" <<EOF
+          ---
+          **Install / upgrade**
+          \`\`\`bash
+          pi install npm:pi-minimal@$VERSION   # or: pi update --extensions
+          \`\`\`
+          EOF
+          echo "file=$notes" >> "$GITHUB_OUTPUT"
+          echo "### Release notes for $TAG" >> "$GITHUB_STEP_SUMMARY"
+          cat "$notes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create tag and GitHub Release
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "pi-minimal $VERSION" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "pi-minimal $VERSION" \
+            --notes-file "${{ steps.notes.outputs.file }}" \
+            --verify-tag
+
+      - name: Publish to npm (trusted publishing)
+        if: needs.detect.outputs.publish == 'true'
+        # No NODE_AUTH_TOKEN: npm authenticates with the job's OIDC token and
+        # generates provenance automatically.
+        run: npm publish --access public
+
+      - name: Attach package tarball to release
+        run: |
+          npm pack --silent
+          gh release upload "$TAG" ./pi-minimal-"$VERSION".tgz --clobber
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published"
+            echo "- Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/$TAG"
+            echo "- npm: https://www.npmjs.com/package/pi-minimal/v/$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"
