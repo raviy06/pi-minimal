@@ -2,8 +2,10 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui"
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
 import path from "node:path"
 import { CHROME_MARGIN } from "./chrome.js"
+import { formatGitState, type GitState } from "./git-state.js"
+import type { Sibling } from "./herdr.js"
 
-function formatCwd(cwd: string): string {
+export function formatCwd(cwd: string): string {
   const home = process.env.HOME || process.env.USERPROFILE || ""
   if (!home) return cwd
   const resolved = path.resolve(cwd)
@@ -14,7 +16,7 @@ function formatCwd(cwd: string): string {
   return cwd
 }
 
-function formatTokens(n: number): string {
+export function formatTokens(n: number): string {
   if (n < 1000) return String(n)
   if (n < 10000) return `${(n / 1000).toFixed(1)}K`
   if (n < 1e6) return `${Math.round(n / 1000)}K`
@@ -22,7 +24,7 @@ function formatTokens(n: number): string {
   return `${Math.round(n / 1e6)}M`
 }
 
-function modelIcon(id: string): string {
+export function modelIcon(id: string): string {
   const s = id.toLowerCase()
   if (s.includes("grok")) return "✦"
   if (
@@ -38,7 +40,7 @@ function modelIcon(id: string): string {
   return "◆"
 }
 
-function shortModel(id: string): string {
+export function shortModel(id: string): string {
   return (id.split("/").pop() || id).replace(/^claude-/, "")
 }
 
@@ -48,61 +50,107 @@ function thinkingColor(level: string): "dim" | "accent" | "warning" {
   return "dim"
 }
 
-function meter(percent: number, fill: string, empty: string): string {
-  const n = 8
-  const filled = Math.max(0, Math.min(n, Math.round((percent / 100) * n)))
-  return fill.repeat(filled) + empty.repeat(n - filled)
+/** Context pressure band used for the meter and percentage colour. */
+export function contextBand(pct: number): "accent" | "warning" | "error" {
+  if (pct >= 90) return "error"
+  if (pct >= 70) return "warning"
+  return "accent"
 }
 
-function splitRow(left: string, right: string, width: number): string {
+export function meter(percent: number, fill: string, empty: string, cells = 8): string {
+  const filled = Math.max(0, Math.min(cells, Math.round((percent / 100) * cells)))
+  return fill.repeat(filled) + empty.repeat(cells - filled)
+}
+
+/**
+ * Fit `left` and `right` into `width`. Right-hand segments are dropped from the end first (they are
+ * the least important), then the left is truncated.
+ */
+export function splitRow(left: string, rightSegments: string[], width: number, sep = "  "): string {
+  const segments = [...rightSegments.filter((s) => visibleWidth(s) > 0)]
+  let right = segments.join(sep)
+  while (segments.length > 0 && visibleWidth(left) + 2 + visibleWidth(right) > width) {
+    segments.pop()
+    right = segments.join(sep)
+  }
   let L = left
-  let R = right
-  while (visibleWidth(L) + 1 + visibleWidth(R) > width && visibleWidth(R) > 0) {
-    R = truncateToWidth(R, Math.max(0, visibleWidth(R) - 1), "")
+  if (visibleWidth(L) + (right ? 2 : 0) + visibleWidth(right) > width) {
+    L = truncateToWidth(L, Math.max(0, width - (right ? 2 : 0) - visibleWidth(right)), "")
   }
-  while (visibleWidth(L) + 1 + visibleWidth(R) > width && visibleWidth(L) > 0) {
-    L = truncateToWidth(L, Math.max(0, visibleWidth(L) - 1), "")
-  }
-  const gap = Math.max(1, width - visibleWidth(L) - visibleWidth(R))
-  return L + " ".repeat(gap) + R
+  const gap = right ? Math.max(2, width - visibleWidth(L) - visibleWidth(right)) : 0
+  return L + " ".repeat(gap) + right
 }
 
-export function installCwd(ctx: ExtensionContext): void {
+function siblingColor(status: string): "success" | "warning" | "error" | "accent" | "muted" {
+  if (status === "idle" || status === "done") return "success"
+  if (status === "working") return "accent"
+  if (status === "blocked") return "error"
+  return "muted"
+}
+
+export type StatusLineSources = {
+  gitState: () => GitState | undefined
+  siblings: () => Sibling[] | undefined
+  onGitChange: (listener: () => void) => () => void
+}
+
+export function installCwd(ctx: ExtensionContext, sources: StatusLineSources): void {
   ctx.ui.setWidget(
     "tw-cwd",
-    (_tui, theme) => ({
-      invalidate() {},
-      render(width: number): string[] {
-        const inner = Math.max(8, width - CHROME_MARGIN * 2)
-        const id = ctx.model?.id || "no-model"
-        const icon = theme.fg("accent", modelIcon(id))
-        const name = theme.fg("text", shortModel(id))
-        const usage = ctx.getContextUsage?.()
-        const window = usage?.contextWindow || ctx.model?.contextWindow
-        const used = usage?.tokens
-        let tokenStr = theme.fg("dim", "?/?")
-        let bar = theme.fg("dim", "░░░░░░░░")
-        let pctStr = theme.fg("dim", "?%")
-        if (typeof used === "number" && window) {
-          const pct = Math.max(0, Math.min(100, Math.round((used / window) * 100)))
-          tokenStr = theme.fg("dim", `${formatTokens(used)}/${formatTokens(window)}`)
-          const hot = pct >= 85
-          bar = meter(pct, theme.fg(hot ? "warning" : "accent", "█"), theme.fg("dim", "░"))
-          pctStr = theme.fg(hot ? "warning" : "muted", `${pct}%`)
-        } else if (used === null && window) {
-          tokenStr = theme.fg("dim", `?/${formatTokens(window)}`)
-        }
-        const thinking = ctx.thinkingLevel || ""
-        const think = thinking ? theme.fg(thinkingColor(thinking), thinking) : ""
-        const midot = theme.fg("dim", " · ")
-        const left = [`${icon} ${name}`, tokenStr, `${bar} ${pctStr}`, think]
-          .filter(Boolean)
-          .join(midot)
-        const right = ctx.cwd ? theme.fg("accent", formatCwd(ctx.cwd)) : ""
-        const row = splitRow(left, right, inner)
-        return [`${" ".repeat(CHROME_MARGIN)}${row}`]
-      },
-    }),
+    (tui, theme) => {
+      const unsub = sources.onGitChange(() => tui.requestRender())
+      return {
+        dispose: unsub,
+        invalidate() {},
+        render(width: number): string[] {
+          const inner = Math.max(8, width - CHROME_MARGIN * 2)
+          const id = ctx.model?.id || "no-model"
+          const icon = theme.fg("accent", modelIcon(id))
+          const name = theme.fg("text", shortModel(id))
+          const thinking = ctx.thinkingLevel || ""
+          const think = thinking ? theme.fg(thinkingColor(thinking), thinking) : ""
+
+          const usage = ctx.getContextUsage?.()
+          const window = usage?.contextWindow || ctx.model?.contextWindow
+          const used = usage?.tokens
+          let bar = theme.fg("dim", "░░░░░░░░")
+          let pctStr = theme.fg("dim", "?%")
+          let tokenStr = theme.fg("dim", "?/?")
+          if (typeof used === "number" && window) {
+            const pct = Math.max(0, Math.min(100, Math.round((used / window) * 100)))
+            const band = contextBand(pct)
+            bar = meter(pct, theme.fg(band, "▓"), theme.fg("dim", "░"))
+            pctStr = theme.fg(band === "accent" ? "muted" : band, `${pct}%`)
+            tokenStr = theme.fg("dim", `${formatTokens(used)}/${formatTokens(window)}`)
+          } else if (used === null && window) {
+            tokenStr = theme.fg("dim", `?/${formatTokens(window)}`)
+          }
+
+          const midot = theme.fg("dim", " · ")
+          const model = [`${icon} ${name}`, think].filter(Boolean).join(midot)
+          const context = `${bar} ${pctStr} ${tokenStr}`
+          const left = `${model}   ${context}`
+
+          const right: string[] = []
+          if (ctx.cwd) right.push(theme.fg("muted", formatCwd(ctx.cwd)))
+          const git = formatGitState(sources.gitState())
+          if (git.branch) {
+            const dirty = git.dirty ? ` ${theme.fg("warning", git.dirty)}` : ""
+            right.push(`${theme.fg("dim", "⎇")} ${theme.fg("muted", git.branch)}${dirty}`)
+          }
+          const siblings = sources.siblings()
+          if (siblings && siblings.length > 0) {
+            right.push(
+              siblings
+                .map((s) => `${theme.fg("text", s.name)} ${theme.fg(siblingColor(s.status), s.status)}`)
+                .join(theme.fg("dim", " · ")),
+            )
+          }
+          const row = splitRow(left, right, inner)
+          return [`${" ".repeat(CHROME_MARGIN)}${row}`]
+        },
+      }
+    },
     { placement: "aboveEditor" },
   )
 }

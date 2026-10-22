@@ -5,12 +5,18 @@ import { installFooter } from "./footer.js"
 import { installCwd } from "./cwd.js"
 import { listSiblings, parseAgentList, parseTabList, type Sibling } from "./herdr.js"
 import { hideGauntletWidgets } from "./tracker.js"
-import { stopLiveWatch, wrapBuiltinTools } from "./tools.js"
+import { installToolRenderers, stopLiveWatch } from "./tools.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
 import { installWorkingStatus } from "./working-status.js"
+import { installTurnRule } from "./turn-rule.js"
+import { installTranscript } from "./transcript.js"
+import { createGitState } from "./git-state.js"
 
 export default function piMinimalExtension(pi: ExtensionAPI): void {
   const stopWorkingStatus = installWorkingStatus(pi)
+  const stopTurnRule = installTurnRule(pi)
+  installToolRenderers(pi)
+  installTranscript(pi)
   let fastTimer: ReturnType<typeof setInterval> | undefined
   let slowTimer: ReturnType<typeof setInterval> | undefined
   let stealTimer: ReturnType<typeof setInterval> | undefined
@@ -18,6 +24,9 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
   let siblings: Sibling[] | undefined
   let generation = 0
   let hideWidgets = true
+  let busy = false
+  let currentCwd = process.cwd()
+  const gitState = createGitState(pi, () => currentCwd)
   const stopTimers = () => {
     if (fastTimer) clearInterval(fastTimer)
     if (slowTimer) clearInterval(slowTimer)
@@ -97,17 +106,40 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
         },
         chrome: () => {
           installHeader(ctx)
-          installFooter(ctx, () => siblings)
+          installChromeFooter(ctx)
         },
       },
     )
+  }
+
+  const contextPct = (ctx: ExtensionContext): number | undefined => {
+    const usage = ctx.getContextUsage?.()
+    const window = usage?.contextWindow || ctx.model?.contextWindow
+    if (typeof usage?.tokens !== "number" || !window) return undefined
+    return Math.max(0, Math.min(100, Math.round((usage.tokens / window) * 100)))
+  }
+
+  const installChromeFooter = (ctx: ExtensionContext) => {
+    installFooter(ctx, {
+      busy: () => busy,
+      editorText: () => (typeof ctx.ui.getEditorText === "function" ? ctx.ui.getEditorText() : ""),
+      contextPct: () => contextPct(ctx),
+    })
+  }
+
+  const installStatusLine = (ctx: ExtensionContext) => {
+    installCwd(ctx, {
+      gitState: gitState.get,
+      siblings: () => siblings,
+      onGitChange: gitState.onChange,
+    })
   }
 
   const pinChrome = (ctx: ExtensionContext, reason: ReclaimReason) => {
     hideForeignChrome(ctx, reason)
     if (ctx.mode !== "tui" || !reclaimPolicy(reason).reinstallChrome) return
     ctx.ui.setWidget("tw-cwd", undefined)
-    installCwd(ctx)
+    installStatusLine(ctx)
   }
 
   pi.on("session_start", async (_event, ctx) => {
@@ -118,10 +150,11 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
       projectTrusted: ctx.isProjectTrusted(),
     })
     hideWidgets = config.hideGauntletWidgets
+    currentCwd = ctx.cwd
     installHeader(ctx)
-    installFooter(ctx, () => siblings)
-    installCwd(ctx)
-    wrapBuiltinTools(pi, ctx)
+    installChromeFooter(ctx)
+    installStatusLine(ctx)
+    void gitState.refresh(true)
     pinChrome(ctx, "session_start")
     ctx.ui.setHiddenThinkingLabel("◆ Thought")
     ctx.ui.setWorkingIndicator()
@@ -135,16 +168,27 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
     }
   })
 
+  pi.on("agent_start", () => {
+    busy = true
+  })
+  pi.on("agent_end", () => {
+    busy = false
+    void gitState.refresh()
+  })
   pi.on("turn_end", (_event, ctx) => {
     pinChrome(ctx, "turn_end")
+    void gitState.refresh()
   })
   pi.on("tool_execution_end", (_event, ctx) => {
     pinChrome(ctx, "tool_execution_end")
+    void gitState.refresh()
   })
 
   pi.on("session_shutdown", async () => {
+    busy = false
     stopTimers()
     stopWorkingStatus()
+    stopTurnRule()
     stopLiveWatch()
     generation += 1
     siblings = undefined

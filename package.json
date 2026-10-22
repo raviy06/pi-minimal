@@ -1,6 +1,6 @@
 {
   "name": "pi-minimal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "private": false,
@@ -13,6 +13,9 @@
   "pi": {
     "extensions": [
       "./dist/index.js"
+    ],
+    "themes": [
+      "./themes/minimal-dark.json"
     ]
   },
   "peerDependencies": {
@@ -20,8 +23,8 @@
     "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
+    "@earendil-works/pi-coding-agent": "^1.4.0",
+    "@earendil-works/pi-tui": "^1.4.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "*",
     "eslint": "^10.11.0",

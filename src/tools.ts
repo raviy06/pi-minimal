@@ -1,30 +1,21 @@
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent"
-import {
-  createBashToolDefinition,
-  createEditToolDefinition,
-  createFindToolDefinition,
-  createGrepToolDefinition,
-  createLsToolDefinition,
-  createReadToolDefinition,
-  createWriteToolDefinition,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent"
-import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui"
-import { activityBullet, rowIsRunning } from "./activity.js"
+import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent"
+import { Container, truncateToWidth } from "@earendil-works/pi-tui"
+import { rowIsRunning } from "./activity.js"
 import { createLiveWatch } from "./live-watch.js"
-import { nextGroupedRow, toolItem, type ToolKind } from "./tool-rows.js"
-
-type ToolArgs = {
-  command?: unknown
-  path?: unknown
-  file_path?: unknown
-  pattern?: unknown
-  target_directory?: unknown
-}
-
-type ToolResult = {
-  content?: Array<{ type?: string; text?: string }>
-}
+import {
+  bashBody,
+  formatDuration,
+  formatOutcome,
+  layoutRow,
+  resultText,
+  rowGlyph,
+  toolItem,
+  type Outcome,
+  type RowStatus,
+  type ToolArgs,
+  type ToolKind,
+  type ToolResultLike,
+} from "./tool-rows.js"
 
 type RenderOptions = {
   expanded?: boolean
@@ -33,6 +24,8 @@ type RenderOptions = {
 type RowState = {
   done?: boolean
   running?: boolean
+  startedAt?: number
+  outcome?: Outcome
 }
 
 type RenderContext = {
@@ -43,9 +36,16 @@ type RenderContext = {
   args?: ToolArgs
   toolCallId?: string
   expanded?: boolean
+  durationMs?: number
+  outputPad?: number
 }
 
 const live = createLiveWatch(400)
+
+/** Left indent of every tool row, in cells. */
+const ROW_INDENT = 2
+/** Max lines of output shown when a row is expanded. */
+const EXPANDED_MAX_LINES = 400
 
 export function stopLiveWatch(): void {
   live.stop()
@@ -55,107 +55,157 @@ function liveId(context: RenderContext, item: string): string {
   return context.toolCallId || item
 }
 
-function contentText(result: ToolResult | undefined): string {
-  if (!result?.content) return ""
-  return result.content
-    .filter((part) => part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text as string)
-    .join("\n")
+function rowStatus(context: RenderContext): RowStatus {
+  if (context.isError) return "error"
+  if (context.state.outcome?.errorLine) return "error"
+  return rowIsRunning(context) ? "running" : "ok"
 }
 
-function collapsedResult() {
-  return new Container()
+function statusColor(status: RowStatus): "error" | "warning" | "success" {
+  if (status === "error") return "error"
+  if (status === "running") return "warning"
+  return "success"
 }
 
-function expandedContent(result: ToolResult | undefined, options: RenderOptions) {
-  if (!options.expanded) return collapsedResult()
-  const text = contentText(result)
-  return text ? new Text(text, 0, 0) : collapsedResult()
+function expandedLines(kind: ToolKind, result: ToolResultLike | undefined): string[] {
+  let text = resultText(result)
+  if (kind === "bash") text = bashBody(text).body
+  if (!text) return []
+  const lines = text.split("\n")
+  if (lines.length > EXPANDED_MAX_LINES) {
+    const hidden = lines.length - EXPANDED_MAX_LINES
+    return [...lines.slice(0, EXPANDED_MAX_LINES), `… ${hidden} more lines`]
+  }
+  return lines
 }
 
-function activityBlock(
-  kind: ToolKind,
-  args: ToolArgs | undefined,
-  theme: Theme,
-  context: RenderContext,
-) {
-  const item = toolItem(kind, args)
-  const id = liveId(context, item)
-  const row = nextGroupedRow(kind, item, id)
-  const running = rowIsRunning(context)
-  context.state.running = running
-  if (running) live.watch(id, context.invalidate)
-  else live.unwatch(id)
-  const color = context.isError ? "error" : running ? "warning" : "dim"
+function outputBlock(kind: ToolKind, result: ToolResultLike | undefined, theme: Theme) {
+  const lines = expandedLines(kind, result)
+  if (lines.length === 0) return new Container()
+  const indent = " ".repeat(ROW_INDENT + 2)
+  const rule = theme.fg("borderMuted", "│")
   return {
     render(width: number): string[] {
-      const pad = 1
-      const inner = Math.max(0, width - pad)
-      const lines: string[] = []
-      if (row.header) {
-        const blink = Boolean(context.state.running) && live.has(id)
-        const bullet = activityBullet(blink, live.frame)
-        lines.push(" ".repeat(pad) + theme.fg(color, truncateToWidth(`${bullet} ${row.header}`, inner)))
-      }
-      lines.push(" ".repeat(pad) + "  " + theme.fg(color, truncateToWidth(row.item, Math.max(0, inner - 2))))
-      return lines
+      const inner = Math.max(0, width - indent.length - 2)
+      return lines.map((line) => `${indent}${rule} ${theme.fg("dim", truncateToWidth(line, inner))}`)
     },
     invalidate() {},
   }
 }
 
-type WrappableTool = {
-  name: string
-  label: string
-  description: string
-  parameters: Parameters<ExtensionAPI["registerTool"]>[0]["parameters"]
-  execute: Parameters<ExtensionAPI["registerTool"]>[0]["execute"]
+function errorLineBlock(line: string | undefined, theme: Theme) {
+  if (!line) return undefined
+  const indent = " ".repeat(ROW_INDENT + 2)
+  const rule = theme.fg("error", "│")
+  return {
+    render(width: number): string[] {
+      const inner = Math.max(0, width - indent.length - 2)
+      return [`${indent}${rule} ${theme.fg("error", truncateToWidth(line, inner))}`]
+    },
+    invalidate() {},
+  }
 }
 
-function wrapOne(pi: ExtensionAPI, kind: ToolKind, factory: () => WrappableTool) {
-  try {
-    const tool = factory()
-    pi.registerTool({
-      ...tool,
-      renderShell: "self",
-      renderCall(args, theme, context) {
-        return activityBlock(kind, args as ToolArgs, theme, context as RenderContext)
-      },
-      renderResult(result, options, _theme, context) {
-        const renderContext = context as RenderContext
-        if (!renderContext.isPartial) {
-          renderContext.state.done = true
-          renderContext.state.running = false
-          live.unwatch(liveId(renderContext, toolItem(kind, renderContext.args)))
+function activityRow(kind: ToolKind, args: ToolArgs | undefined, theme: Theme, context: RenderContext) {
+  const item = toolItem(kind, args)
+  const id = liveId(context, item)
+  const running = rowIsRunning(context)
+  context.state.running = running
+  if (running) {
+    context.state.startedAt ??= Date.now()
+    live.watch(id, context.invalidate)
+  } else {
+    live.unwatch(id)
+  }
+  return {
+    render(width: number): string[] {
+      const status = rowStatus(context)
+      const blink = status === "running" && live.has(id)
+      const glyph = rowGlyph(status, blink ? live.frame : 0)
+      const outcome = context.state.outcome
+      const diff = status !== "running" ? outcome?.diff : undefined
+      let right = ""
+      if (status === "running") {
+        const started = context.state.startedAt
+        right = started ? formatDuration(Date.now() - started) : ""
+      } else if (outcome) {
+        right = outcome.text
+        if (diff) {
+          const stats = `+${diff.added} −${diff.removed}`
+          right = right ? `${stats} · ${right}` : stats
         }
-        return expandedContent(result as ToolResult, options)
-      },
-    })
-  } catch {
-    // A missing built-in tool leaves the rest of the compact renderers available.
+      }
+      const inner = Math.max(8, width - ROW_INDENT)
+      const row = layoutRow(inner, kind, item, right)
+
+      let coloredRight: string
+      if (status === "running") coloredRight = theme.fg("warning", row.outcome)
+      else if (status === "error") coloredRight = theme.fg("error", row.outcome)
+      else if (diff && row.outcome) {
+        const rest = row.outcome.slice(`+${diff.added} −${diff.removed}`.length)
+        coloredRight =
+          theme.fg("success", `+${diff.added}`) + " " + theme.fg("error", `−${diff.removed}`) + theme.fg("dim", rest)
+      } else coloredRight = theme.fg("dim", row.outcome)
+
+      const line =
+        " ".repeat(ROW_INDENT) +
+        theme.fg(statusColor(status), glyph) +
+        " " +
+        theme.fg("dim", row.verb) +
+        " " +
+        theme.fg(status === "error" ? "text" : "muted", row.item) +
+        " ".repeat(row.gap) +
+        coloredRight
+      return [line]
+    },
+    invalidate() {},
   }
 }
 
-export function wrapBuiltinTools(pi: ExtensionAPI, ctx: ExtensionContext): void {
-  let commandPrefix: string | undefined
-  let shellPath: string | undefined
-  let autoResizeImages: boolean | undefined
-  try {
-    const settings = SettingsManager.create(ctx.cwd, undefined, {
-      projectTrusted: ctx.isProjectTrusted(),
-    })
-    commandPrefix = settings.getShellCommandPrefix()
-    shellPath = settings.getShellPath()
-    autoResizeImages = settings.getImageAutoResize()
-  } catch {
-    // Tool wrapping still works when optional shell or image settings are unavailable.
-  }
+const TOOL_KINDS: ReadonlySet<string> = new Set<ToolKind>(["bash", "read", "edit", "write", "grep", "find", "ls"])
 
-  wrapOne(pi, "bash", () => createBashToolDefinition(ctx.cwd, { commandPrefix, shellPath }) as WrappableTool)
-  wrapOne(pi, "read", () => createReadToolDefinition(ctx.cwd, { autoResizeImages }) as WrappableTool)
-  wrapOne(pi, "edit", () => createEditToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "write", () => createWriteToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "grep", () => createGrepToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "find", () => createFindToolDefinition(ctx.cwd) as WrappableTool)
-  wrapOne(pi, "ls", () => createLsToolDefinition(ctx.cwd) as WrappableTool)
+export function isToolKind(name: string): name is ToolKind {
+  return TOOL_KINDS.has(name)
+}
+
+export function compactRenderers(kind: ToolKind): ToolRenderers {
+  return {
+    renderShell: "self",
+    renderCall(args, theme, context) {
+      return activityRow(kind, args as ToolArgs, theme, context as RenderContext)
+    },
+    renderResult(result, options, theme, context) {
+      const renderContext = context as RenderContext
+      const typedResult = result as ToolResultLike
+      if (!renderContext.isPartial) {
+        renderContext.state.done = true
+        renderContext.state.running = false
+        renderContext.state.outcome = formatOutcome(
+          kind,
+          renderContext.args,
+          typedResult,
+          Boolean(renderContext.isError),
+          renderContext.durationMs,
+        )
+        live.unwatch(liveId(renderContext, toolItem(kind, renderContext.args)))
+      }
+      const container = new Container()
+      const errorLine = errorLineBlock(renderContext.state.outcome?.errorLine, theme)
+      if (errorLine && !(options as RenderOptions).expanded) container.addChild(errorLine)
+      if ((options as RenderOptions).expanded) container.addChild(outputBlock(kind, typedResult, theme))
+      return container
+    },
+  }
+}
+
+/**
+ * Attach the compact renderers to the built-in tools without re-registering them. Registered at
+ * extension load so a resumed transcript draws its earlier tool calls the same way as new ones.
+ */
+export function installToolRenderers(pi: ExtensionAPI): void {
+  if (typeof pi.registerToolRenderer !== "function") return
+  pi.registerToolRenderer((toolName, next) => {
+    if (!isToolKind(toolName)) return next()
+    return compactRenderers(toolName)
+  })
 }
