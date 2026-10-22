@@ -36,7 +36,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: git diff --exit-code -- dist
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@11
       - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
