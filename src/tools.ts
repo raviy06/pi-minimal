@@ -1,8 +1,10 @@
 import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent"
 import { Container, truncateToWidth } from "@earendil-works/pi-tui"
 import { rowIsRunning } from "./activity.js"
+import * as chrome from "./chrome.js"
 import { createLiveWatch } from "./live-watch.js"
 import {
+
   bashBody,
   formatDuration,
   formatOutcome,
@@ -16,6 +18,9 @@ import {
   type ToolKind,
   type ToolResultLike,
 } from "./tool-rows.js"
+
+/** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
+const margin = (): number => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1))
 
 type RenderOptions = {
   expanded?: boolean
@@ -42,8 +47,8 @@ type RenderContext = {
 
 const live = createLiveWatch(400)
 
-/** Left indent of every tool row, in cells. */
-const ROW_INDENT = 2
+/** Left indent of every tool row: chrome margin plus one cell so rows sit inside message text. */
+const rowIndent = () => margin() + 1
 /** Max lines of output shown when a row is expanded. */
 const EXPANDED_MAX_LINES = 400
 
@@ -82,7 +87,7 @@ function expandedLines(kind: ToolKind, result: ToolResultLike | undefined): stri
 function outputBlock(kind: ToolKind, result: ToolResultLike | undefined, theme: Theme) {
   const lines = expandedLines(kind, result)
   if (lines.length === 0) return new Container()
-  const indent = " ".repeat(ROW_INDENT + 2)
+  const indent = " ".repeat(rowIndent() + 2)
   const rule = theme.fg("borderMuted", "│")
   return {
     render(width: number): string[] {
@@ -95,7 +100,7 @@ function outputBlock(kind: ToolKind, result: ToolResultLike | undefined, theme: 
 
 function errorLineBlock(line: string | undefined, theme: Theme) {
   if (!line) return undefined
-  const indent = " ".repeat(ROW_INDENT + 2)
+  const indent = " ".repeat(rowIndent() + 2)
   const rule = theme.fg("error", "│")
   return {
     render(width: number): string[] {
@@ -135,7 +140,7 @@ function activityRow(kind: ToolKind, args: ToolArgs | undefined, theme: Theme, c
           right = right ? `${stats} · ${right}` : stats
         }
       }
-      const inner = Math.max(8, width - ROW_INDENT)
+      const inner = Math.max(8, width - rowIndent())
       const row = layoutRow(inner, kind, item, right)
 
       let coloredRight: string
@@ -148,7 +153,7 @@ function activityRow(kind: ToolKind, args: ToolArgs | undefined, theme: Theme, c
       } else coloredRight = theme.fg("dim", row.outcome)
 
       const line =
-        " ".repeat(ROW_INDENT) +
+        " ".repeat(rowIndent()) +
         theme.fg(statusColor(status), glyph) +
         " " +
         theme.fg("dim", row.verb) +

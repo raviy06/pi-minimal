@@ -1,10 +1,13 @@
 import { Container, truncateToWidth } from "@earendil-works/pi-tui";
 import { rowIsRunning } from "./activity.js";
+import * as chrome from "./chrome.js";
 import { createLiveWatch } from "./live-watch.js";
 import { bashBody, formatDuration, formatOutcome, layoutRow, resultText, rowGlyph, toolItem, } from "./tool-rows.js";
+/** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
+const margin = () => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1));
 const live = createLiveWatch(400);
-/** Left indent of every tool row, in cells. */
-const ROW_INDENT = 2;
+/** Left indent of every tool row: chrome margin plus one cell so rows sit inside message text. */
+const rowIndent = () => margin() + 1;
 /** Max lines of output shown when a row is expanded. */
 const EXPANDED_MAX_LINES = 400;
 export function stopLiveWatch() {
@@ -44,7 +47,7 @@ function outputBlock(kind, result, theme) {
     const lines = expandedLines(kind, result);
     if (lines.length === 0)
         return new Container();
-    const indent = " ".repeat(ROW_INDENT + 2);
+    const indent = " ".repeat(rowIndent() + 2);
     const rule = theme.fg("borderMuted", "│");
     return {
         render(width) {
@@ -57,7 +60,7 @@ function outputBlock(kind, result, theme) {
 function errorLineBlock(line, theme) {
     if (!line)
         return undefined;
-    const indent = " ".repeat(ROW_INDENT + 2);
+    const indent = " ".repeat(rowIndent() + 2);
     const rule = theme.fg("error", "│");
     return {
         render(width) {
@@ -98,7 +101,7 @@ function activityRow(kind, args, theme, context) {
                     right = right ? `${stats} · ${right}` : stats;
                 }
             }
-            const inner = Math.max(8, width - ROW_INDENT);
+            const inner = Math.max(8, width - rowIndent());
             const row = layoutRow(inner, kind, item, right);
             let coloredRight;
             if (status === "running")
@@ -112,7 +115,7 @@ function activityRow(kind, args, theme, context) {
             }
             else
                 coloredRight = theme.fg("dim", row.outcome);
-            const line = " ".repeat(ROW_INDENT) +
+            const line = " ".repeat(rowIndent()) +
                 theme.fg(statusColor(status), glyph) +
                 " " +
                 theme.fg("dim", row.verb) +

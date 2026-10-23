@@ -1,8 +1,12 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
 import { keyHint } from "@earendil-works/pi-coding-agent"
 import { truncateToWidth } from "@earendil-works/pi-tui"
-import { CHROME_MARGIN } from "./chrome.js"
+import * as chrome from "./chrome.js"
 import { formatTrackerLines } from "./tracker.js"
+
+/** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
+const margin = (): number => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1))
+
 
 export type FooterSources = {
   /** True while an agent run is in progress. */
@@ -33,7 +37,7 @@ export function installFooter(ctx: ExtensionContext, sources: FooterSources): vo
       dispose: unsub,
       invalidate() {},
       render(width: number): string[] {
-        const inner = Math.max(8, width - CHROME_MARGIN * 2)
+        const inner = Math.max(8, width - margin() * 2)
         const out: string[] = []
         const hints = footerHints(sources, [
           keyHint("tui.input.submit", "send"),
@@ -42,10 +46,10 @@ export function installFooter(ctx: ExtensionContext, sources: FooterSources): vo
         ].filter(Boolean))
         if (hints.length > 0) {
           const line = theme.fg("dim", hints.join("  ·  "))
-          out.push(`${" ".repeat(CHROME_MARGIN)}${truncateToWidth(line, inner, "")}`)
+          out.push(`${" ".repeat(margin())}${truncateToWidth(line, inner, "")}`)
         }
         for (const extra of formatTrackerLines(ctx, theme as { fg: (name: string, s: string) => string })) {
-          out.push(`${" ".repeat(CHROME_MARGIN)}${truncateToWidth(extra, inner, "")}`)
+          out.push(`${" ".repeat(margin())}${truncateToWidth(extra, inner, "")}`)
         }
         return out
       },

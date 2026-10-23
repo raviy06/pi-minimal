@@ -10,6 +10,23 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-22
+
+### Added
+- Fenced code renders as a closed box (`╭─ lang ─╮` / `│ code │` / `╰───╯`)
+  instead of literal ``` lines, keeping syntax highlighting; long lines wrap
+  inside the box. pi-tui exposes no hook for this, so pi-minimal post-processes
+  the code token's rendered lines.
+
+### Changed
+- Chrome margin (status line, footer, turn rule, tool rows) follows pi's
+  `outputPad` setting so it lines up with transcript text. Set
+  `editorPaddingX` to the same value for a flush left edge.
+- Chrome modules tolerate a stale `chrome` module after `/reload`, which
+  previously could crash the renderer when the package was updated in place.
+- `mdCodeBlockBorder` in `minimal-dark` is a faint grey again (it frames the
+  box now) instead of background-coloured.
+
 ## [0.2.1] - 2026-10-22
 
 ### Added
@@ -57,7 +74,8 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 - Initial release: header/footer chrome, compact tool activity rows, working
   status line, Herdr sibling status, Gauntlet widget hiding.
 
-[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/raviy06/pi-minimal/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/raviy06/pi-minimal/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/raviy06/pi-minimal/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/raviy06/pi-minimal/releases/tag/v0.1.0
