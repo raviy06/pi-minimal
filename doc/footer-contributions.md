@@ -2,17 +2,19 @@
 
 Pi-minimal remains the single footer owner. A trusted companion extension can publish a bounded activity snapshot without replacing the footer or fighting other widgets. With no contributor, existing hints and legacy phase/task summaries are unchanged.
 
-Order: **existing hints → legacy tracker lines → activity rows last**. The only supported slot in v1 is `activity`; this does not implement a task tracker, subagent launcher, or PR/workspace display.
+Order: **input → existing hints → plan summary → activity rows last**. When either contribution is visible, a blank row separates the footer from input and separates each nonempty group. Agent rows stay compact, and empty groups leave no extra gaps. Legacy-only output is unchanged.
+
+Two independent slots are supported: `activity` and `summary`, with one owner per slot. An explicit plan summary replaces the legacy tracker projection while present, avoiding duplicate plan bars; clearing it restores the legacy summary. This is display composition, not a task tracker, subagent launcher, or PR/workspace display.
 
 ## Events
 
 | Event | Direction | Payload |
 |---|---|---|
 | `pi-minimal:footer:v1:register` | consumer → host | Mutable registration request; host assigns `result` synchronously |
-| `pi-minimal:footer:v1:ready` | host → consumers | `{ version: 1, sessionId, slots: ["activity"] }` |
+| `pi-minimal:footer:v1:ready` | host → consumers | `{ version: 1, sessionId, slots: ["activity", "summary"] }` |
 | `pi-minimal:footer:v1:unavailable` | host → consumers | `{ version: 1, sessionId }` |
 
-Use `ctx.sessionManager.getSessionId()`, not a file path. Events are in-process only, not a cross-process API. One consumer owns the activity slot at a time. Names/keys are display identity, not permission or process-control tokens.
+Use `ctx.sessionManager.getSessionId()`, not a file path. Events are in-process only, not a cross-process API. One consumer owns each slot at a time; a tracker and activity extension can register independently. Names/keys are display identity, not permission or process-control tokens.
 
 Register during `session_start`; also listen for `ready` to tolerate either extension load order. Clear the local handle on `unavailable`. Do not attempt to reinstall the footer if no host responds.
 
@@ -49,7 +51,7 @@ type RegisterRequest = {
   version: 1;
   sessionId: string;
   owner: string;
-  slot: "activity";
+  slot: "activity" | "summary";
   result?:
     | { ok: true; registration: {
         publish(snapshot: unknown): { ok: true } | { ok: false; code: string };
@@ -61,7 +63,32 @@ type RegisterRequest = {
 
 No result means the host is absent/not ready. Registration errors include `invalid`, `wrong-session`, `occupied`, and `not-tui`. Publish errors include `invalid`, `stale`, and `disposed`.
 
-## Snapshot schema
+## Plan summary snapshot (`summary` slot)
+
+```ts
+{
+  revision: 0,
+  format: "icons", // or "plain"
+  plan: { id: "P12", accepted: 3, total: 7, inReview: 1, blocked: 1 }
+}
+```
+
+The plan ID follows row-key bounds. Counts/revision are nonnegative safe integers;
+accepted cannot exceed total; review and blocked counts cannot individually exceed
+remaining tasks. Counts are supplied by the tracker, never inferred from agent
+runs. Omit `plan` on a newer revision to clear the contribution without releasing
+ownership. Snapshot objects are cloned/frozen, and revision/disposal rules match
+the activity slot. Each slot has independent ownership and revision tracking.
+
+The label and filled segments use the semantic `accent` color (violet in
+minimal-dark); empty segments are muted. Up to 12 tasks use one slanted segment
+per task (`▰▰▰▱▱▱▱ 3/7`). Larger plans use ten proportional segments and retain the
+exact count; these represent aggregate progress, not individual task states.
+Plain mode uses `###....`. The strip drops before counts/attention on narrow
+terminals. Zero total displays `No tasks yet`. No animation or task persistence
+is introduced by this display slot.
+
+## Activity snapshot schema (`activity` slot)
 
 - `revision`: nonnegative safe integer, strictly increasing for each successful publish on one registration. Start at zero again after a new registration.
 - `motion`: `spinner` or `static`.

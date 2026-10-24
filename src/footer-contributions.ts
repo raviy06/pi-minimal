@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from "node:util"
+import { normalizePlanSnapshot } from "./footer-plan.js"
 
 export const ACTIVITY_STATES = ["queued", "running", "waiting", "paused", "stopping", "completed", "failed", "stopped", "unknown"] as const
 export type ActivityState = typeof ACTIVITY_STATES[number]
@@ -74,10 +75,10 @@ function normalizeSnapshot(input: unknown): ActivitySnapshot | undefined {
     motion: input.motion as ActivitySnapshot["motion"], format: input.format as ActivitySnapshot["format"] })
 }
 
-export function createFooterContributions(initialSessionId: string | null = null) {
+function createFooterSlot<T extends { revision: number }>(normalize: (input: unknown) => T | undefined, initialSessionId: string | null) {
   let sessionId = initialSessionId
   let owner: symbol | undefined
-  let snapshot: ActivitySnapshot | undefined
+  let snapshot: T | undefined
   const observers = new Set<() => void>()
   const notify = () => {
     for (const observer of [...observers]) {
@@ -99,7 +100,7 @@ export function createFooterContributions(initialSessionId: string | null = null
       return { ok: true, registration: {
         publish(input: unknown) {
           if (owner !== token) return { ok: false, code: "disposed" }
-          const next = normalizeSnapshot(input)
+          const next = normalize(input)
           if (!next) return { ok: false, code: "invalid" }
           if (snapshot && next.revision <= snapshot.revision) return { ok: false, code: "stale" }
           snapshot = next; notify()
@@ -111,6 +112,21 @@ export function createFooterContributions(initialSessionId: string | null = null
         },
       } }
     },
+  }
+}
+export function createFooterContributions(initialSessionId: string | null = null) {
+  const activity = createFooterSlot(normalizeSnapshot, initialSessionId)
+  const summary = createFooterSlot(normalizePlanSnapshot, initialSessionId)
+  return {
+    read: activity.read,
+    readPlan: summary.read,
+    register: activity.register,
+    registerPlan: summary.register,
+    subscribe(observer: () => void) {
+      const offActivity = activity.subscribe(observer), offSummary = summary.subscribe(observer)
+      return () => { offActivity(); offSummary() }
+    },
+    reset(sessionId: string | null) { activity.reset(sessionId); summary.reset(sessionId) },
   }
 }
 export type FooterContributions = ReturnType<typeof createFooterContributions>

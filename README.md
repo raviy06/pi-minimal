@@ -59,7 +59,9 @@ The only supported key is `hideGauntletWidgets`. It defaults to `true`.
 
 Companion extensions can publish session-scoped activity rows through the versioned
 in-process footer contribution API. Pi-minimal keeps ownership of the footer and
-renders activity **after** existing hints and tracker summaries. The API adds no
+renders activity **after** existing hints and tracker summaries. An independent
+`summary` slot supplies a violet segmented plan bar below the input. Nonempty
+groups are separated by one blank row; agent rows remain compact. The API adds no
 visible content without a contributor and changes no other extension's settings.
 
 Rows use pi-minimal's yellow running spinner, green completion check, and red

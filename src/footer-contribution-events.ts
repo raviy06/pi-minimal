@@ -6,7 +6,7 @@ export const FOOTER_EVENTS = {
   unavailable: "pi-minimal:footer:v1:unavailable",
 } as const
 export type RegisterRequest = {
-  version: 1; sessionId: string; owner: string; slot: "activity"
+  version: 1; sessionId: string; owner: string; slot: "activity" | "summary"
   result?: RegistrationResult | { ok: false; code: "not-tui" }
 }
 type Events = {
@@ -22,11 +22,11 @@ export function bindFooterContributionEvents(events: Events, registry: FooterCon
     const request = value as Partial<RegisterRequest>
     // A different host may have answered first. Never overwrite its result.
     if (request.result !== undefined) return
-    if (request.version !== 1 || request.slot !== "activity") request.result = { ok: false, code: "invalid" }
+    if (request.version !== 1 || (request.slot !== "activity" && request.slot !== "summary")) request.result = { ok: false, code: "invalid" }
     else if (mode !== "tui") request.result = { ok: false, code: "not-tui" }
-    else request.result = registry.register(request)
+    else request.result = request.slot === "summary" ? registry.registerPlan(request) : registry.register(request)
   })
-  if (mode === "tui") events.emit(FOOTER_EVENTS.ready, { version: 1, sessionId, slots: ["activity"] })
+  if (mode === "tui") events.emit(FOOTER_EVENTS.ready, { version: 1, sessionId, slots: ["activity", "summary"] })
   let disposed = false
   return () => {
     if (disposed) return

@@ -13,15 +13,15 @@ export function bindFooterContributionEvents(events, registry, sessionId, mode) 
         // A different host may have answered first. Never overwrite its result.
         if (request.result !== undefined)
             return;
-        if (request.version !== 1 || request.slot !== "activity")
+        if (request.version !== 1 || (request.slot !== "activity" && request.slot !== "summary"))
             request.result = { ok: false, code: "invalid" };
         else if (mode !== "tui")
             request.result = { ok: false, code: "not-tui" };
         else
-            request.result = registry.register(request);
+            request.result = request.slot === "summary" ? registry.registerPlan(request) : registry.register(request);
     });
     if (mode === "tui")
-        events.emit(FOOTER_EVENTS.ready, { version: 1, sessionId, slots: ["activity"] });
+        events.emit(FOOTER_EVENTS.ready, { version: 1, sessionId, slots: ["activity", "summary"] });
     let disposed = false;
     return () => {
         if (disposed)

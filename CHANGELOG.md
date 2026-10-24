@@ -21,6 +21,10 @@ Releases are cut automatically: when the `version` in `package.json` changes on
   and optional task links with independent task-state badges.
 - Snapshot validation, immutable metadata, exclusive slot ownership, stale-update
   protection, and integration documentation.
+- Independent plan-summary contribution slot with violet slanted progress segments
+  and exact accepted/total counts, rendered below the input. One blank row
+  separates nonempty footer groups; activity rows stay compact. The summary is
+  display-only and does not add task storage or infer acceptance from agent runs.
 - Release checks for matching manifest/lockfile versions and a dated changelog entry.
 
 ### Fixed

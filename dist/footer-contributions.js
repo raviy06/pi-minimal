@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
+import { normalizePlanSnapshot } from "./footer-plan.js";
 export const ACTIVITY_STATES = ["queued", "running", "waiting", "paused", "stopping", "completed", "failed", "stopped", "unknown"];
 export const TASK_STATUSES = ["todo", "in_progress", "blocked", "in_review", "done", "cancelled"];
 function record(value) {
@@ -57,7 +58,7 @@ function normalizeSnapshot(input) {
     return Object.freeze({ revision: input.revision, rows: Object.freeze(rows), omitted: input.omitted,
         motion: input.motion, format: input.format });
 }
-export function createFooterContributions(initialSessionId = null) {
+function createFooterSlot(normalize, initialSessionId) {
     let sessionId = initialSessionId;
     let owner;
     let snapshot;
@@ -92,7 +93,7 @@ export function createFooterContributions(initialSessionId = null) {
                     publish(input) {
                         if (owner !== token)
                             return { ok: false, code: "disposed" };
-                        const next = normalizeSnapshot(input);
+                        const next = normalize(input);
                         if (!next)
                             return { ok: false, code: "invalid" };
                         if (snapshot && next.revision <= snapshot.revision)
@@ -110,5 +111,20 @@ export function createFooterContributions(initialSessionId = null) {
                     },
                 } };
         },
+    };
+}
+export function createFooterContributions(initialSessionId = null) {
+    const activity = createFooterSlot(normalizeSnapshot, initialSessionId);
+    const summary = createFooterSlot(normalizePlanSnapshot, initialSessionId);
+    return {
+        read: activity.read,
+        readPlan: summary.read,
+        register: activity.register,
+        registerPlan: summary.register,
+        subscribe(observer) {
+            const offActivity = activity.subscribe(observer), offSummary = summary.subscribe(observer);
+            return () => { offActivity(); offSummary(); };
+        },
+        reset(sessionId) { activity.reset(sessionId); summary.reset(sessionId); },
     };
 }

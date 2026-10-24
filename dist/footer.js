@@ -4,6 +4,7 @@ import * as chrome from "./chrome.js";
 import { formatTrackerLines } from "./tracker.js";
 import { activityNeedsAnimation, renderFooterActivity } from "./footer-activity.js";
 import { createLiveWatch } from "./live-watch.js";
+import { renderFooterPlan } from "./footer-plan.js";
 /** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
 const margin = () => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1));
 /**
@@ -68,16 +69,19 @@ export function installFooter(ctx, sources, contributions) {
                     const line = theme.fg("dim", hints.join("  ·  "));
                     out.push(`${" ".repeat(margin())}${truncateToWidth(line, inner, "")}`);
                 }
-                for (const extra of formatTrackerLines(ctx, theme)) {
-                    out.push(`${" ".repeat(margin())}${truncateToWidth(extra, inner, "")}`);
-                }
                 const activityWidth = Math.max(0, width - margin() * 2);
+                const plan = renderFooterPlan(contributions?.readPlan(), activityWidth, theme);
+                const summary = (plan.length ? plan : formatTrackerLines(ctx, theme))
+                    .map(line => `${" ".repeat(margin())}${truncateToWidth(line, plan.length ? activityWidth : inner, "")}`);
                 activityHasSpace = activityWidth > 0;
                 syncAnimation();
-                for (const line of renderFooterActivity(contributions?.read(), activityWidth, theme, live.frame)) {
-                    out.push(`${" ".repeat(margin())}${line}`);
-                }
-                return out;
+                const activity = renderFooterActivity(contributions?.read(), activityWidth, theme, live.frame)
+                    .map(line => `${" ".repeat(margin())}${line}`);
+                // Preserve legacy-only layout; contributions opt into the spaced layout.
+                if (!plan.length && !activity.length)
+                    return [...out, ...summary];
+                const groups = [out, summary, activity].filter(group => group.length > 0);
+                return ["", ...groups.flatMap((group, index) => index === 0 ? group : ["", ...group])];
             },
         };
     });

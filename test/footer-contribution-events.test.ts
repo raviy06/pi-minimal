@@ -27,7 +27,7 @@ test("consumer-before-host registers on ready; host-before-consumer registers di
 test("rejects foreign session, invalid version/slot and non-TUI requests", () => {
   const events = bus(), registry = createFooterContributions()
   let stop = bindFooterContributionEvents(events, registry, "S1", "tui")
-  for (const changes of [{ sessionId: "S2" }, { version: 2 }, { slot: "summary" }]) {
+  for (const changes of [{ sessionId: "S2" }, { version: 2 }, { slot: "sidebar" }]) {
     const req = { ...request(), ...changes }
     events.emit(FOOTER_EVENTS.register, req)
     assert.equal(req.result?.ok, false)
@@ -36,6 +36,18 @@ test("rejects foreign session, invalid version/slot and non-TUI requests", () =>
   stop = bindFooterContributionEvents(events, registry, "S1", "print")
   const req = request(); events.emit(FOOTER_EVENTS.register, req)
   assert.deepEqual(req.result, { ok: false, code: "not-tui" })
+  stop()
+})
+
+test("summary and activity register independently through the public event", () => {
+  const events = bus(), registry = createFooterContributions()
+  const stop = bindFooterContributionEvents(events, registry, "S1", "tui")
+  const activity = request(), plan: RegisterRequest = { ...request(), slot: "summary", owner: "tracker" }
+  events.emit(FOOTER_EVENTS.register, activity)
+  events.emit(FOOTER_EVENTS.register, plan)
+  assert.ok(activity.result?.ok && plan.result?.ok)
+  assert.ok(plan.result.registration.publish({ revision: 0, format: "icons", plan: { id: "P12", accepted: 3, total: 7, inReview: 1, blocked: 0 } }).ok)
+  assert.equal(registry.readPlan()?.plan?.accepted, 3)
   stop()
 })
 
