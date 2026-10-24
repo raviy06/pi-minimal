@@ -71,6 +71,12 @@ This is a display integration seam, not a subagent runtime or task tracker.
 
 ## Releasing
 
+Every new extension PR must include a version bump before it is opened, so merging
+it can trigger publication and users can update. Keep `package.json`, both root
+version fields in `package-lock.json`, the package test expectation, and the dated
+changelog entry synchronized. Before merging concurrent PRs, verify that the
+selected version is still newer than `main` and has not already been published.
+
 Releases are automatic. To ship a version:
 
 1. Add a `## [x.y.z] - YYYY-MM-DD` section to `CHANGELOG.md`.
