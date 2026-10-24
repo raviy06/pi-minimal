@@ -1,5 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 export const ACTIVITY_STATES = ["queued", "running", "waiting", "paused", "stopping", "completed", "failed", "stopped", "unknown"];
+export const TASK_STATUSES = ["todo", "in_progress", "blocked", "in_review", "done", "cancelled"];
 function record(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -12,6 +13,12 @@ export function cleanActivityText(value) {
         // eslint-disable-next-line no-control-regex
         .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ")
         .replace(/\s+/gu, " ").trim();
+}
+function validMetrics(value) {
+    return record(value) && [value.elapsedMs, value.tokens].every(n => n === undefined || (Number.isSafeInteger(n) && n >= 0));
+}
+function validTask(value) {
+    return record(value) && identity(value.planId) && identity(value.id) && TASK_STATUSES.includes(value.status);
 }
 function normalizeSnapshot(input) {
     if (!record(input) || !Number.isSafeInteger(input.revision) || input.revision < 0 ||
@@ -26,11 +33,16 @@ function normalizeSnapshot(input) {
             typeof item.agent !== "string" || item.agent.length > 96 || !cleanActivityText(item.agent) ||
             typeof item.text !== "string" || item.text.length > 256 ||
             !ACTIVITY_STATES.includes(item.state) ||
-            (item.parentKey !== undefined && !identity(item.parentKey)))
+            (item.parentKey !== undefined && !identity(item.parentKey)) ||
+            (item.metrics !== undefined && !validMetrics(item.metrics)) ||
+            (item.task !== undefined && !validTask(item.task)))
             return;
         parents.set(item.key, item.parentKey);
         rows.push(Object.freeze({ key: item.key, agent: cleanActivityText(item.agent), state: item.state,
-            text: cleanActivityText(item.text), ...(item.parentKey === undefined ? {} : { parentKey: item.parentKey }) }));
+            text: cleanActivityText(item.text), ...(item.parentKey === undefined ? {} : { parentKey: item.parentKey }),
+            ...(item.metrics === undefined ? {} : { metrics: Object.freeze({ elapsedMs: item.metrics.elapsedMs, tokens: item.metrics.tokens }) }),
+            ...(item.task === undefined ? {} : { task: Object.freeze({ planId: item.task.planId, id: item.task.id, status: item.task.status }) }),
+        }));
     }
     for (const row of rows) {
         const seen = new Set([row.key]);

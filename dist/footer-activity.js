@@ -1,6 +1,7 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { cleanActivityText } from "./footer-contributions.js";
 import { rowGlyph } from "./tool-rows.js";
+import { alignActivityMetrics, taskPrefix } from "./footer-activity-details.js";
 const MAX_ROWS = 4;
 const indicators = {
     queued: ["○", "muted"], running: ["◐", "warning"], waiting: ["!", "warning"], paused: ["Ⅱ", "muted"],
@@ -24,8 +25,9 @@ export function renderFooterActivity(snapshot, width, theme, frame = 0) {
             parent = parents.get(parent);
         }
         const reason = row.state === "stopping" && snapshot.format === "icons" ? "Stopping: " : "";
-        const text = `${"  ".repeat(depth)}${theme.fg(tone, marker)} ${cleanActivityText(row.agent)}  ${reason}${cleanActivityText(row.text)}`.trimEnd();
-        return truncateToWidth(text, width);
+        const task = taskPrefix(row.task, snapshot.format === "plain", theme);
+        const text = `${"  ".repeat(depth)}${theme.fg(tone, marker)} ${cleanActivityText(row.agent)}  ${task}${reason}${cleanActivityText(row.text)}`.trimEnd();
+        return alignActivityMetrics(text, row.metrics, width, snapshot.format === "plain", theme);
     });
     const omitted = Math.min(Number.MAX_SAFE_INTEGER, snapshot.omitted + Math.max(0, snapshot.rows.length - MAX_ROWS));
     if (omitted > 0)

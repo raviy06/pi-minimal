@@ -2,7 +2,13 @@ import { stripVTControlCharacters } from "node:util"
 
 export const ACTIVITY_STATES = ["queued", "running", "waiting", "paused", "stopping", "completed", "failed", "stopped", "unknown"] as const
 export type ActivityState = typeof ACTIVITY_STATES[number]
-export type ActivityRow = Readonly<{ key: string; agent: string; state: ActivityState; text: string; parentKey?: string }>
+export type ActivityMetrics = Readonly<{ elapsedMs?: number; tokens?: number }>
+export const TASK_STATUSES = ["todo", "in_progress", "blocked", "in_review", "done", "cancelled"] as const
+export type ActivityTask = Readonly<{ planId: string; id: string; status: typeof TASK_STATUSES[number] }>
+export type ActivityRow = Readonly<{
+  key: string; agent: string; state: ActivityState; text: string; parentKey?: string
+  metrics?: ActivityMetrics; task?: ActivityTask
+}>
 export type ActivitySnapshot = Readonly<{
   revision: number; rows: readonly ActivityRow[]; omitted: number
   motion: "spinner" | "static"; format: "icons" | "plain"
@@ -27,6 +33,12 @@ export function cleanActivityText(value: string): string {
     .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ")
     .replace(/\s+/gu, " ").trim()
 }
+function validMetrics(value: unknown): value is ActivityMetrics {
+  return record(value) && [value.elapsedMs, value.tokens].every(n => n === undefined || (Number.isSafeInteger(n) && (n as number) >= 0))
+}
+function validTask(value: unknown): value is ActivityTask {
+  return record(value) && identity(value.planId) && identity(value.id) && TASK_STATUSES.includes(value.status as ActivityTask["status"])
+}
 function normalizeSnapshot(input: unknown): ActivitySnapshot | undefined {
   if (!record(input) || !Number.isSafeInteger(input.revision) || (input.revision as number) < 0 ||
     !Number.isSafeInteger(input.omitted) || (input.omitted as number) < 0 ||
@@ -39,10 +51,15 @@ function normalizeSnapshot(input: unknown): ActivitySnapshot | undefined {
       typeof item.agent !== "string" || item.agent.length > 96 || !cleanActivityText(item.agent) ||
       typeof item.text !== "string" || item.text.length > 256 ||
       !ACTIVITY_STATES.includes(item.state as ActivityState) ||
-      (item.parentKey !== undefined && !identity(item.parentKey))) return
+      (item.parentKey !== undefined && !identity(item.parentKey)) ||
+      (item.metrics !== undefined && !validMetrics(item.metrics)) ||
+      (item.task !== undefined && !validTask(item.task))) return
     parents.set(item.key, item.parentKey as string | undefined)
     rows.push(Object.freeze({ key: item.key, agent: cleanActivityText(item.agent), state: item.state as ActivityState,
-      text: cleanActivityText(item.text), ...(item.parentKey === undefined ? {} : { parentKey: item.parentKey as string }) }))
+      text: cleanActivityText(item.text), ...(item.parentKey === undefined ? {} : { parentKey: item.parentKey as string }),
+      ...(item.metrics === undefined ? {} : { metrics: Object.freeze({ elapsedMs: (item.metrics as ActivityMetrics).elapsedMs, tokens: (item.metrics as ActivityMetrics).tokens }) }),
+      ...(item.task === undefined ? {} : { task: Object.freeze({ planId: (item.task as ActivityTask).planId, id: (item.task as ActivityTask).id, status: (item.task as ActivityTask).status }) }),
+    }))
   }
   for (const row of rows) {
     const seen = new Set([row.key])

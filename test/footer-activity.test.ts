@@ -51,6 +51,38 @@ test("bounds Unicode visible widths, strips controls, and limits nested indentat
   assert.ok(renderFooterActivity(input, 80, theme)[1].startsWith("  ◐"))
 })
 
+test("right-aligns metrics and drops tokens then time before truncating activity", () => {
+  const input: ActivitySnapshot = { ...snapshot(), rows: [{ ...snapshot().rows[0], metrics: { elapsedMs: 134000, tokens: 8200 }, task: { planId: "P12", id: "T3", status: "in_progress" } }] }
+  const full = renderFooterActivity(input, 80, theme)[0]
+  assert.ok(full.includes("T3 · Last: tests"))
+  assert.ok(full.endsWith("2m 14s · 8.2k tok"))
+  assert.equal(visibleWidth(full), 80)
+  const timeOnly = renderFooterActivity(input, 40, theme)[0]
+  assert.ok(timeOnly.endsWith("2m 14s"), timeOnly)
+  assert.ok(!timeOnly.includes("tok"))
+  const narrow = renderFooterActivity(input, 30, theme)[0]
+  assert.ok(narrow.includes("T3 · Last: tests"))
+  assert.ok(!narrow.includes("2m"))
+})
+
+test("missing metrics are not zero and completed elapsed values do not advance", () => {
+  const input: ActivitySnapshot = { ...snapshot(), rows: [{ ...snapshot().rows[0], state: "completed", metrics: {} }] }
+  assert.ok(renderFooterActivity(input, 80, theme)[0].endsWith("— · — tok"))
+  const ended: ActivitySnapshot = { ...input, rows: [{ ...input.rows[0], metrics: { elapsedMs: 66000, tokens: 0 } }] }
+  assert.ok(renderFooterActivity(ended, 80, theme, 0)[0].endsWith("1m 06s · 0 tok"))
+  assert.equal(renderFooterActivity(ended, 80, theme, 0)[0], renderFooterActivity(ended, 80, theme, 1)[0])
+})
+
+test("task status is independent of agent status and plain mode keeps task labels", () => {
+  for (const [status, marker] of [["blocked", "!"], ["in_review", "◇"], ["done", "✓"]] as const) {
+    const input: ActivitySnapshot = { ...snapshot(), rows: [{ ...snapshot().rows[0], state: "completed", task: { planId: "P12", id: "T3", status } }] }
+    assert.ok(renderFooterActivity(input, 80, theme)[0].includes(`${marker} T3`))
+    const plain = renderFooterActivity({ ...input, format: "plain" }, 100, theme)[0]
+    assert.ok(plain.includes(`[${status}] T3`))
+    assert.ok(plain.includes("[completed]"))
+  }
+})
+
 test("uses current semantic theme and never caches colored text", () => {
   const colors: string[] = []
   const themed = { fg: (color: string, text: string) => { colors.push(color); return text } }

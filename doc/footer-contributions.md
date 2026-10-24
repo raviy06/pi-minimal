@@ -75,6 +75,12 @@ Each row:
 - `state`: `queued`, `running`, `waiting`, `paused`, `stopping`, `completed`, `failed`, `stopped`, or `unknown`.
 - `text`: at most 256 input characters; keep it short, safe, and evidence-grounded.
 - Optional `parentKey`: references a key in the same snapshot. Missing references, self-parenting, and cycles are rejected.
+- Optional `metrics`: `{ elapsedMs?: number, tokens?: number }`. Both values must be nonnegative safe integers. An absent object preserves the original compact row; an empty object displays unknown values (`—`, or `-` in plain mode), never invented zeros.
+- Optional `task`: `{ planId: string, id: string, status: "todo" | "in_progress" | "blocked" | "in_review" | "done" | "cancelled" }`. Both IDs use the same bounds as row keys. The link is display context, not permission to read/write a plan.
+
+Metrics are right-aligned only if the full activity text still fits with at least two columns of separation. Drop tokens first, then time, before truncating activity. Elapsed time is supplied by the producer: compute from the run start while active, freeze at the run's end, and do not advance completed/unknown runs by inference. `tokens` means this child's own cumulative reported input + output tokens, excluding separately summed descendants. It is not context-window occupancy; omit unavailable data rather than guessing. The host does not calculate elapsed time from wall-clock time.
+
+Task IDs appear beside activity. In-progress tasks need no extra badge; blocked/review/accepted/cancelled tasks get a distinct badge, and plain mode retains textual status. A completed agent with an `in_review` task shows a green run check plus an accent review diamond. This optional data does not create a tracker or automatically accept a task.
 
 Owner uses the same character/length rules as row keys. Display text has ANSI/OSC, C0/C1, and bidi controls removed, with whitespace collapsed. The host clones and freezes validated snapshots. Invalid/stale publishes preserve the previous valid snapshot. Consumers must handle publish failure and send an explicit unknown/error observation when appropriate; an absent update does not prove a run ended.
 
