@@ -2,6 +2,8 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { loadPiMinimalConfig } from "./config.js";
 import { installHeader } from "./header.js";
 import { installFooter } from "./footer.js";
+import { createFooterContributions } from "./footer-contributions.js";
+import { bindFooterContributionEvents } from "./footer-contribution-events.js";
 import { installCwd } from "./cwd.js";
 import { listSiblings, parseAgentList, parseTabList } from "./herdr.js";
 import { hideGauntletWidgets } from "./tracker.js";
@@ -20,6 +22,10 @@ export default function piMinimalExtension(pi) {
     installToolRenderers(pi);
     installTranscript(pi);
     installCodeBox();
+    const contributions = createFooterContributions();
+    let stopFooter = () => { };
+    let stopContributionEvents = () => { };
+    let sessionActive = false;
     let fastTimer;
     let slowTimer;
     let stealTimer;
@@ -128,11 +134,12 @@ export default function piMinimalExtension(pi) {
         return Math.max(0, Math.min(100, Math.round((usage.tokens / window) * 100)));
     };
     const installChromeFooter = (ctx) => {
-        installFooter(ctx, {
+        stopFooter();
+        stopFooter = installFooter(ctx, {
             busy: () => busy,
             editorText: () => (typeof ctx.ui.getEditorText === "function" ? ctx.ui.getEditorText() : ""),
             contextPct: () => contextPct(ctx),
-        });
+        }, contributions);
     };
     const installStatusLine = (ctx) => {
         installCwd(ctx, {
@@ -149,6 +156,11 @@ export default function piMinimalExtension(pi) {
         installStatusLine(ctx);
     };
     pi.on("session_start", async (_event, ctx) => {
+        stopFooter();
+        stopContributionEvents();
+        sessionActive = true;
+        generation += 1;
+        stopContributionEvents = bindFooterContributionEvents(pi.events, contributions, ctx.sessionManager.getSessionId(), ctx.mode);
         if (ctx.mode !== "tui")
             return;
         const config = loadPiMinimalConfig({
@@ -172,8 +184,13 @@ export default function piMinimalExtension(pi) {
         pinChrome(ctx, "session_start");
         ctx.ui.setHiddenThinkingLabel("◆ Thought");
         ctx.ui.setWorkingIndicator();
-        setTimeout(() => pinChrome(ctx, "session_settle"), 0);
-        setTimeout(() => pinChrome(ctx, "session_settle"), 50);
+        const sessionGeneration = generation;
+        const settle = () => {
+            if (sessionActive && generation === sessionGeneration)
+                pinChrome(ctx, "session_settle");
+        };
+        setTimeout(settle, 0);
+        setTimeout(settle, 50);
         if (!stealTimer) {
             stealTimer = setInterval(() => hideForeignChrome(ctx, "interval"), 200);
         }
@@ -197,6 +214,9 @@ export default function piMinimalExtension(pi) {
         void gitState.refresh();
     });
     pi.on("session_shutdown", async () => {
+        sessionActive = false;
+        stopFooter();
+        stopContributionEvents();
         busy = false;
         stopTimers();
         stopWorkingStatus();

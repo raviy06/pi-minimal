@@ -3,6 +3,9 @@ import { keyHint } from "@earendil-works/pi-coding-agent"
 import { truncateToWidth } from "@earendil-works/pi-tui"
 import * as chrome from "./chrome.js"
 import { formatTrackerLines } from "./tracker.js"
+import type { FooterContributions } from "./footer-contributions.js"
+import { activityNeedsAnimation, renderFooterActivity } from "./footer-activity.js"
+import { createLiveWatch } from "./live-watch.js"
 
 /** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
 const margin = (): number => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1))
@@ -30,11 +33,34 @@ export function footerHints(sources: FooterSources, hints: string[]): string[] {
   return out
 }
 
-export function installFooter(ctx: ExtensionContext, sources: FooterSources): void {
+export function installFooter(ctx: ExtensionContext, sources: FooterSources, contributions?: FooterContributions): () => void {
+  let stopMount = () => {}
+  let stopped = false
   ctx.ui.setFooter((tui, theme, footerData) => {
-    const unsub = footerData.onBranchChange(() => tui.requestRender())
+    stopMount()
+    if (stopped) return { render: () => [], invalidate() {} }
+    const live = createLiveWatch(400)
+    let disposed = false
+    let activityHasSpace = true
+    const redraw = () => { if (!disposed) tui.requestRender() }
+    const syncAnimation = () => {
+      if (disposed) return
+      if (activityHasSpace && activityNeedsAnimation(contributions?.read())) live.watch("footer", redraw)
+      else live.unwatch("footer")
+    }
+    const update = () => { syncAnimation(); redraw() }
+    const unsub = footerData.onBranchChange(redraw)
+    const unsubscribeActivity = contributions?.subscribe(update)
+    stopMount = () => {
+      if (disposed) return
+      disposed = true
+      unsub()
+      unsubscribeActivity?.()
+      live.stop()
+    }
+    update()
     return {
-      dispose: unsub,
+      dispose: stopMount,
       invalidate() {},
       render(width: number): string[] {
         const inner = Math.max(8, width - margin() * 2)
@@ -51,8 +77,15 @@ export function installFooter(ctx: ExtensionContext, sources: FooterSources): vo
         for (const extra of formatTrackerLines(ctx, theme as { fg: (name: string, s: string) => string })) {
           out.push(`${" ".repeat(margin())}${truncateToWidth(extra, inner, "")}`)
         }
+        const activityWidth = Math.max(0, width - margin() * 2)
+        activityHasSpace = activityWidth > 0
+        syncAnimation()
+        for (const line of renderFooterActivity(contributions?.read(), activityWidth, theme, live.frame)) {
+          out.push(`${" ".repeat(margin())}${line}`)
+        }
         return out
       },
     }
   })
+  return () => { stopped = true; stopMount() }
 }
