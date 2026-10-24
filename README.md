@@ -55,7 +55,29 @@ The only supported key is `hideGauntletWidgets`. It defaults to `true`.
 { "hideGauntletWidgets": true }
 ```
 
+## Optional footer activity API
+
+Companion extensions can publish session-scoped activity rows through the versioned
+in-process footer contribution API. Pi-minimal keeps ownership of the footer and
+renders activity **after** existing hints and tracker summaries. An independent
+`summary` slot supplies a violet segmented plan bar below the input. Nonempty
+groups are separated by one blank row; agent rows remain compact. The API adds no
+visible content without a contributor and changes no other extension's settings.
+
+Rows use pi-minimal's yellow running spinner, green completion check, and red
+failure glyph. Plain-text and static modes are supported. See
+[Footer activity contributions](doc/footer-contributions.md) for the protocol,
+validation limits, lifecycle, and integration example.
+
+This is a display integration seam, not a subagent runtime or task tracker.
+
 ## Releasing
+
+Every new extension PR must include a version bump before it is opened, so merging
+it can trigger publication and users can update. Keep `package.json`, both root
+version fields in `package-lock.json`, the package test expectation, and the dated
+changelog entry synchronized. Before merging concurrent PRs, verify that the
+selected version is still newer than `main` and has not already been published.
 
 Releases are automatic. To ship a version:
 

@@ -9,6 +9,8 @@ import {
 	type ExtensionContext,
 } from "@earendil-works/pi-coding-agent"
 import install from "../src/index.js"
+import { EventEmitter } from "node:events"
+import { FOOTER_EVENTS, type RegisterRequest } from "../src/footer-contribution-events.js"
 
 type Call = { method: string; args: unknown[] }
 type SessionMode = "tui" | "rpc" | "json" | "print"
@@ -44,6 +46,11 @@ function createFake(options: {
 	const execCalls: Call[] = []
 	const registerCalls: Call[] = []
 	const allCalls: Call[] = []
+	const emitter = new EventEmitter()
+	const events = {
+		emit: (name: string, value: unknown) => { emitter.emit(name, value) },
+		on: (name: string, handler: (value: unknown) => void) => { emitter.on(name, handler); return () => { emitter.off(name, handler) } },
+	}
 
 	const record = (target: Call[], method: string, args: unknown[]) => {
 		const call = { method, args }
@@ -66,11 +73,12 @@ function createFake(options: {
 		mode: options.mode ?? "tui",
 		cwd: options.cwd,
 		isProjectTrusted: () => options.projectTrusted ?? false,
-		sessionManager: { getBranch: () => [] },
+		sessionManager: { getBranch: () => [], getSessionId: () => "S1" },
 		ui,
 	} as unknown as ExtensionContext
 
 	const pi = {
+		events,
 		on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
 			const list = handlers.get(event) ?? []
 			list.push(handler)
@@ -110,7 +118,7 @@ function createFake(options: {
 		}
 	}
 
-	return { pi, ctx, uiCalls, execCalls, registerCalls, allCalls, emit }
+	return { pi, ctx, uiCalls, execCalls, registerCalls, allCalls, emit, events }
 }
 
 function widgetCalls(uiCalls: Call[], key: string): Call[] {
@@ -273,6 +281,31 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 			0,
 		)
 	})
+})
+
+test("footer registration survives chrome reinstalls and becomes inert on shutdown", async (t) => {
+	const { agentDir, cwd } = setupDirs(t)
+	process.env[AGENT_DIR_ENV] = agentDir
+	delete process.env.HERDR_ENV
+	t.after(restoreEnv)
+	const { pi, emit, events, uiCalls } = createFake({ cwd })
+	install(pi)
+	t.after(() => emit("session_shutdown"))
+	await emit("session_start")
+	const req: RegisterRequest = { version: 1, owner: "activity", sessionId: "S1", slot: "activity" }
+	events.emit(FOOTER_EVENTS.register, req)
+	assert.ok(req.result?.ok)
+	const handle = req.result.registration
+	const data = { revision: 0, rows: [], omitted: 0, motion: "static", format: "icons" }
+	assert.equal(handle.publish(data).ok, true)
+	await emit("turn_end")
+	await emit("tool_execution_end")
+	assert.equal(handle.publish({ ...data, revision: 1 }).ok, true)
+	await emit("session_shutdown")
+	assert.equal(handle.publish({ ...data, revision: 2 }).ok, false)
+	const count = uiCalls.length
+	await new Promise(resolve => setTimeout(resolve, 70))
+	assert.equal(uiCalls.length, count, "settle callbacks must not reinstall after shutdown")
 })
 
 test("agent_end appends a turn summary entry in TUI mode", async (t) => {

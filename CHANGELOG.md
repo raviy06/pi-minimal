@@ -10,6 +10,28 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-24
+
+### Added
+- Versioned, session-scoped footer activity contribution API. Companion extensions
+  can publish bounded activity rows after existing hints and tracker summaries
+  without replacing the footer. No visible change without a contributor.
+- Icon-first activity rows with pi-minimal's spinner/check/failure colors,
+  plain/static modes, overflow handling, optional elapsed time/token metrics,
+  and optional task links with independent task-state badges.
+- Snapshot validation, immutable metadata, exclusive slot ownership, stale-update
+  protection, and integration documentation.
+- Independent plan-summary contribution slot with violet slanted progress segments
+  and exact accepted/total counts, rendered below the input. One blank row
+  separates nonempty footer groups; activity rows stay compact. The summary is
+  display-only and does not add task storage or infer acceptance from agent runs.
+- Release checks for matching manifest/lockfile versions and a dated changelog entry.
+
+### Fixed
+- Dispose activity subscriptions and animation timers across footer replacement
+  and shutdown; prevent delayed settle callbacks from reinstalling stale chrome.
+- Synchronize the previously stale lockfile package version with the manifest.
+
 ## [0.2.2] - 2026-10-22
 
 ### Added
@@ -74,7 +96,8 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 - Initial release: header/footer chrome, compact tool activity rows, working
   status line, Herdr sibling status, Gauntlet widget hiding.
 
-[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/raviy06/pi-minimal/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/raviy06/pi-minimal/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/raviy06/pi-minimal/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/raviy06/pi-minimal/compare/v0.1.0...v0.2.0

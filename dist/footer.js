@@ -2,6 +2,9 @@ import { keyHint } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import * as chrome from "./chrome.js";
 import { formatTrackerLines } from "./tracker.js";
+import { activityNeedsAnimation, renderFooterActivity } from "./footer-activity.js";
+import { createLiveWatch } from "./live-watch.js";
+import { renderFooterPlan } from "./footer-plan.js";
 /** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
 const margin = () => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1));
 /**
@@ -19,11 +22,40 @@ export function footerHints(sources, hints) {
         out.push("/compact");
     return out;
 }
-export function installFooter(ctx, sources) {
+export function installFooter(ctx, sources, contributions) {
+    let stopMount = () => { };
+    let stopped = false;
     ctx.ui.setFooter((tui, theme, footerData) => {
-        const unsub = footerData.onBranchChange(() => tui.requestRender());
+        stopMount();
+        if (stopped)
+            return { render: () => [], invalidate() { } };
+        const live = createLiveWatch(400);
+        let disposed = false;
+        let activityHasSpace = true;
+        const redraw = () => { if (!disposed)
+            tui.requestRender(); };
+        const syncAnimation = () => {
+            if (disposed)
+                return;
+            if (activityHasSpace && activityNeedsAnimation(contributions?.read()))
+                live.watch("footer", redraw);
+            else
+                live.unwatch("footer");
+        };
+        const update = () => { syncAnimation(); redraw(); };
+        const unsub = footerData.onBranchChange(redraw);
+        const unsubscribeActivity = contributions?.subscribe(update);
+        stopMount = () => {
+            if (disposed)
+                return;
+            disposed = true;
+            unsub();
+            unsubscribeActivity?.();
+            live.stop();
+        };
+        update();
         return {
-            dispose: unsub,
+            dispose: stopMount,
             invalidate() { },
             render(width) {
                 const inner = Math.max(8, width - margin() * 2);
@@ -37,11 +69,21 @@ export function installFooter(ctx, sources) {
                     const line = theme.fg("dim", hints.join("  ·  "));
                     out.push(`${" ".repeat(margin())}${truncateToWidth(line, inner, "")}`);
                 }
-                for (const extra of formatTrackerLines(ctx, theme)) {
-                    out.push(`${" ".repeat(margin())}${truncateToWidth(extra, inner, "")}`);
-                }
-                return out;
+                const activityWidth = Math.max(0, width - margin() * 2);
+                const plan = renderFooterPlan(contributions?.readPlan(), activityWidth, theme);
+                const summary = (plan.length ? plan : formatTrackerLines(ctx, theme))
+                    .map(line => `${" ".repeat(margin())}${truncateToWidth(line, plan.length ? activityWidth : inner, "")}`);
+                activityHasSpace = activityWidth > 0;
+                syncAnimation();
+                const activity = renderFooterActivity(contributions?.read(), activityWidth, theme, live.frame)
+                    .map(line => `${" ".repeat(margin())}${line}`);
+                // Preserve legacy-only layout; contributions opt into the spaced layout.
+                if (!plan.length && !activity.length)
+                    return [...out, ...summary];
+                const groups = [out, summary, activity].filter(group => group.length > 0);
+                return ["", ...groups.flatMap((group, index) => index === 0 ? group : ["", ...group])];
             },
         };
     });
+    return () => { stopped = true; stopMount(); };
 }
