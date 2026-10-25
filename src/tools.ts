@@ -5,7 +5,6 @@ import * as chrome from "./chrome.js"
 import { callSummary, codemodeOutcome, nestedCalls, nestedItem, scriptOutput, type NestedCall } from "./codemode-rows.js"
 import { createLiveWatch } from "./live-watch.js"
 import {
-
   bashBody,
   formatDuration,
   formatOutcome,
@@ -204,6 +203,123 @@ export function compactRenderers(kind: ToolKind): ToolRenderers {
   }
 }
 
+/** One `glyph verb item … outcome` line in the tool-row grid, shared by every self-rendered row. */
+function rowLine(theme: Theme, width: number, status: RowStatus, frame: 0 | 1, verb: string, item: string, right: string): string {
+	const inner = Math.max(8, width - rowIndent())
+	const row = layoutRow(inner, verb, item, right)
+	const rightColor = status === "running" ? "warning" : status === "error" ? "error" : "dim"
+	return (
+		" ".repeat(rowIndent()) +
+		theme.fg(statusColor(status), rowGlyph(status, frame)) +
+		" " +
+		theme.fg("dim", row.verb) +
+		" " +
+		theme.fg(status === "error" ? "text" : "muted", row.item) +
+		" ".repeat(row.gap) +
+		theme.fg(rightColor, row.outcome)
+	)
+}
+
+/** Longest first result line shown verbatim as an outcome; longer results show a line count. */
+const OUTCOME_TEXT_MAX = 24
+
+/** `mcp` for MCP tools, `agent` for subagent tools, `tool` for anything else. */
+export function genericVerb(toolName: string): string {
+	if (toolName.startsWith("mcp__")) return "mcp"
+	if (/subagent/.test(toolName)) return "agent"
+	return "tool"
+}
+
+/** `server · tool key=value …` for MCP tools, `name key=value …` for the rest. */
+export function genericItem(toolName: string, args: unknown): string {
+	let json: string
+	try {
+		json = JSON.stringify(args ?? {}) ?? ""
+	} catch {
+		json = ""
+	}
+	const params = nestedItem({ name: toolName, args: json })
+	const mcp = /^mcp__(.+?)__(.+)$/.exec(toolName)
+	const label = mcp ? `${mcp[1]} \u00b7 ${mcp[2]}` : toolName
+	return params ? `${label} ${params}` : label
+}
+
+export function genericOutcome(result: ToolResultLike | undefined, isError: boolean, durationMs: number | undefined): Outcome {
+	const text = resultText(result)
+	const dur = formatDuration(durationMs)
+	const join = (...parts: string[]) => parts.filter(Boolean).join(" \u00b7 ")
+	const lines = text.split("\n").filter((line) => line.trim().length > 0)
+	if (isError) return { text: join("failed", dur), errorLine: lines[0]?.trim() ?? "" }
+	if (lines.length === 0) return { text: join("ok", dur) }
+	const first = lines[0].trim()
+	if (lines.length === 1 && visibleWidth(first) <= OUTCOME_TEXT_MAX) return { text: join(first, dur) }
+	return { text: join(`${lines.length} line${lines.length === 1 ? "" : "s"}`, dur) }
+}
+
+/**
+ * A one-line row for tools that bring no renderer of their own (most MCP tools,
+ * `subagents_enable`): `\u2713 mcp   re_mcp \u00b7 query_prometheus query=\u2026   12 lines \u00b7 1.4s`.
+ * Without it they fall through to pi-core's default: bold name, JSON arguments, a text preview.
+ */
+export function genericRenderers(toolName: string): ToolRenderers {
+	const verb = genericVerb(toolName)
+	return {
+		renderShell: "self",
+		renderCall(args, theme, rawContext) {
+			const context = rawContext as RenderContext
+			const id = context.toolCallId || toolName
+			const item = genericItem(toolName, args)
+			const running = rowIsRunning(context)
+			context.state.running = running
+			if (running) {
+				context.state.startedAt ??= Date.now()
+				live.watch(id, context.invalidate)
+			} else live.unwatch(id)
+			return {
+				render(width: number): string[] {
+					const status = rowStatus(context)
+					const frame = status === "running" && live.has(id) ? live.frame : 0
+					const right =
+						status === "running"
+							? context.state.startedAt
+								? formatDuration(Date.now() - context.state.startedAt)
+								: ""
+							: (context.state.outcome?.text ?? "")
+					return [rowLine(theme, width, status, frame, verb, item, right)]
+				},
+				invalidate() {},
+			}
+		},
+		renderResult(result, options, theme, rawContext) {
+			const context = rawContext as RenderContext
+			const typed = result as ToolResultLike
+			if (!context.isPartial) {
+				context.state.done = true
+				context.state.running = false
+				context.state.outcome = genericOutcome(typed, Boolean(context.isError), context.durationMs)
+				live.unwatch(context.toolCallId || toolName)
+			}
+			const container = new Container()
+			const expanded = Boolean((options as RenderOptions).expanded)
+			const errorLine = context.state.outcome?.errorLine
+			if (errorLine && !expanded) container.addChild(errorLineBlock(errorLine, theme)!)
+			if (expanded) {
+				const text = resultText(typed)
+				if (text) {
+					const indent = " ".repeat(rowIndent() + 2)
+					container.addChild({ render: (width: number) => ruledLines(text, width, theme, indent), invalidate() {} })
+				}
+			}
+			return container
+		},
+	}
+}
+
+/** True when a tool definition draws its own call or result. */
+function hasOwnRenderer(definition: ToolRenderers | undefined): boolean {
+	return typeof definition?.renderCall === "function" || typeof definition?.renderResult === "function"
+}
+
 /** Max nested calls shown under a collapsed codemode row; the rest are counted. */
 const NESTED_PREVIEW = 8
 /** Width of the nested tool-name column. */
@@ -255,19 +371,7 @@ export function codemodeRenderers(): ToolRenderers {
 					const calls = state.calls ?? []
 					const right =
 						status === "running" ? (state.startedAt ? formatDuration(Date.now() - state.startedAt) : "") : (state.outcome?.text ?? "")
-					const inner = Math.max(8, width - rowIndent())
-					const row = layoutRow(inner, "code", callSummary(calls), right)
-					const rightColor = status === "running" ? "warning" : status === "error" ? "error" : "dim"
-					const lines = [
-						" ".repeat(rowIndent()) +
-							theme.fg(statusColor(status), rowGlyph(status, frame)) +
-							" " +
-							theme.fg("dim", row.verb) +
-							" " +
-							theme.fg(status === "error" ? "text" : "muted", row.item) +
-							" ".repeat(row.gap) +
-							theme.fg(rightColor, row.outcome),
-					]
+					const lines = [rowLine(theme, width, status, frame, "code", callSummary(calls), right)]
 					const expanded = Boolean(context.expanded)
 					const shown = expanded ? calls : calls.slice(-NESTED_PREVIEW)
 					const childIndent = " ".repeat(rowIndent() + 4)
@@ -347,7 +451,10 @@ export function installToolRenderers(pi: ExtensionAPI): void {
   if (typeof pi.registerToolRenderer !== "function") return
   pi.registerToolRenderer((toolName, next) => {
     if (toolName === "codemode") return codemodeRenderers()
-    if (!isToolKind(toolName)) return next()
-    return compactRenderers(toolName)
+    if (isToolKind(toolName)) return compactRenderers(toolName)
+    // Tools that draw themselves (subagent's live view, gauntlet's trackers) keep their look.
+    const definition = next()
+    if (hasOwnRenderer(definition)) return definition
+    return { ...definition, ...genericRenderers(toolName) }
   })
 }

@@ -102,3 +102,21 @@ test("hideGauntletWidgets clears phase_tracker and plan_tracker", () => {
 		["plan_tracker", undefined],
 	])
 })
+
+test("task line is a segmented bar coloured by status, scaled past 12 tasks", () => {
+	const colour = { fg: (name: string, s: string) => `<${name}>${s}` }
+	const tasks = [
+		{ name: "a", status: "complete" },
+		{ name: "b", status: "failed" },
+		{ name: "c", status: "in_progress" },
+		{ name: "d", status: "pending" },
+	] as never
+	const [line] = formatTrackerLines(ctxFrom({ tasks }), colour)
+	assert.ok(line.includes("<success>▰<error>▰<warning>▰<dim>▱"), line)
+	assert.ok(line.includes("1/4"), line)
+	assert.ok(!line.includes("✓"), "no check-mark run")
+	const many = Array.from({ length: 40 }, (_, i) => ({ name: `t${i}`, status: i < 20 ? "complete" : "pending" })) as never
+	const [scaled] = formatTrackerLines(ctxFrom({ tasks: many }), theme)
+	assert.equal((scaled.match(/[▰▱]/g) ?? []).length, 10)
+	assert.ok(scaled.includes("▰▰▰▰▰▱▱▱▱▱"), scaled)
+})
