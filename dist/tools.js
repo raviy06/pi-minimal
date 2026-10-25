@@ -1,6 +1,7 @@
-import { Container, truncateToWidth } from "@earendil-works/pi-tui";
+import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { rowIsRunning } from "./activity.js";
 import * as chrome from "./chrome.js";
+import { callSummary, codemodeOutcome, nestedCalls, nestedItem, scriptOutput } from "./codemode-rows.js";
 import { createLiveWatch } from "./live-watch.js";
 import { bashBody, formatDuration, formatOutcome, layoutRow, resultText, rowGlyph, toolItem, } from "./tool-rows.js";
 /** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
@@ -157,6 +158,141 @@ export function compactRenderers(kind) {
         },
     };
 }
+/** Max nested calls shown under a collapsed codemode row; the rest are counted. */
+const NESTED_PREVIEW = 8;
+/** Width of the nested tool-name column. */
+const NESTED_NAME_MAX = 14;
+function nestedGlyph(call, frame) {
+    if (call.status === "running")
+        return { glyph: rowGlyph("running", frame), color: "warning" };
+    if (call.status === "error")
+        return { glyph: "\u2717", color: "error" };
+    if (call.status === "cancelled")
+        return { glyph: "\u2298", color: "dim" };
+    return { glyph: "\u2713", color: "success" };
+}
+/** Lines of a `\u2502`-ruled block, dim and truncated, for script source or output on expand. */
+function ruledLines(text, width, theme, indent, label) {
+    const inner = Math.max(0, width - indent.length - 2);
+    const rule = theme.fg("borderMuted", "\u2502");
+    let lines = text.split("\n");
+    if (lines.length > EXPANDED_MAX_LINES)
+        lines = [...lines.slice(0, EXPANDED_MAX_LINES), `\u2026 ${lines.length - EXPANDED_MAX_LINES} more lines`];
+    const out = label ? [`${indent}${rule} ${theme.fg("dim", truncateToWidth(label, inner))}`] : [];
+    return out.concat(lines.map((line) => `${indent}${rule} ${theme.fg("dim", truncateToWidth(line, inner))}`));
+}
+/**
+ * codemode as a tool row: `\u2713 code  3 calls \u00b7 plan_tracker \u00d72, bash \u2026 54 lines \u00b7 1.2s`, then one
+ * child row per nested call. The script and its output appear only when expanded, undecorated,
+ * so syntax colours never compete with status colours in the transcript.
+ */
+export function codemodeRenderers() {
+    return {
+        renderShell: "self",
+        renderCall(args, theme, rawContext) {
+            const context = rawContext;
+            const code = typeof args?.code === "string" ? (args.code) : "";
+            context.state.code = code;
+            const id = context.toolCallId || "codemode";
+            const running = rowIsRunning(context);
+            context.state.running = running;
+            if (running) {
+                context.state.startedAt ??= Date.now();
+                live.watch(id, context.invalidate);
+            }
+            else
+                live.unwatch(id);
+            return {
+                render(width) {
+                    const state = context.state;
+                    const status = state.outcome?.errorLine !== undefined || context.isError ? "error" : rowIsRunning(context) ? "running" : "ok";
+                    const frame = status === "running" && live.has(id) ? live.frame : 0;
+                    const calls = state.calls ?? [];
+                    const right = status === "running" ? (state.startedAt ? formatDuration(Date.now() - state.startedAt) : "") : (state.outcome?.text ?? "");
+                    const inner = Math.max(8, width - rowIndent());
+                    const row = layoutRow(inner, "code", callSummary(calls), right);
+                    const rightColor = status === "running" ? "warning" : status === "error" ? "error" : "dim";
+                    const lines = [
+                        " ".repeat(rowIndent()) +
+                            theme.fg(statusColor(status), rowGlyph(status, frame)) +
+                            " " +
+                            theme.fg("dim", row.verb) +
+                            " " +
+                            theme.fg(status === "error" ? "text" : "muted", row.item) +
+                            " ".repeat(row.gap) +
+                            theme.fg(rightColor, row.outcome),
+                    ];
+                    const expanded = Boolean(context.expanded);
+                    const shown = expanded ? calls : calls.slice(-NESTED_PREVIEW);
+                    const childIndent = " ".repeat(rowIndent() + 4);
+                    if (shown.length < calls.length) {
+                        lines.push(`${childIndent}${theme.fg("dim", `\u2026 ${calls.length - shown.length} earlier calls`)}`);
+                    }
+                    const nameWidth = Math.min(NESTED_NAME_MAX, Math.max(0, ...shown.map((call) => (call.name ?? "tool").length)));
+                    for (const call of shown) {
+                        const { glyph, color } = nestedGlyph(call, frame);
+                        const name = truncateToWidth(call.name ?? "tool", nameWidth, "\u2026").padEnd(nameWidth);
+                        const dur = call.status === "error" ? `failed \u00b7 ${formatDuration(call.durationMs)}` : formatDuration(call.durationMs);
+                        const room = Math.max(8, width - childIndent.length);
+                        // Reuse the row grid with the name as the "verb" column, then fix the glyph slot.
+                        const prefixWidth = 2 + nameWidth + 1;
+                        const itemRoom = Math.max(0, room - prefixWidth - (dur ? visibleWidth(dur) + 2 : 0));
+                        const item = truncateToWidth(nestedItem(call), itemRoom, "\u2026");
+                        const gap = dur ? Math.max(2, room - prefixWidth - visibleWidth(item) - visibleWidth(dur)) : 0;
+                        lines.push(childIndent +
+                            theme.fg(color, glyph) +
+                            " " +
+                            theme.fg("dim", name) +
+                            " " +
+                            theme.fg(call.status === "error" ? "text" : "muted", item) +
+                            " ".repeat(gap) +
+                            theme.fg(call.status === "error" ? "error" : "dim", dur));
+                    }
+                    return lines;
+                },
+                invalidate() { },
+            };
+        },
+        renderResult(result, options, theme, rawContext) {
+            const context = rawContext;
+            const typed = result;
+            context.state.calls = nestedCalls(typed);
+            if (!context.isPartial) {
+                context.state.done = true;
+                context.state.running = false;
+                const outcome = codemodeOutcome(typed, Boolean(context.isError), context.durationMs);
+                context.state.outcome = { text: outcome.text, errorLine: outcome.failed ? (outcome.errorLine ?? "") : undefined };
+                context.state.output = scriptOutput(typed);
+                live.unwatch(context.toolCallId || "codemode");
+            }
+            // No invalidate here: the host runs renderCall and renderResult in one updateDisplay() and
+            // paints afterwards, so the call row's lazy render() already sees these calls. Calling
+            // invalidate() would re-enter updateDisplay() and recurse.
+            const container = new Container();
+            const expanded = Boolean(options.expanded);
+            const errorLine = context.state.outcome?.errorLine;
+            if (errorLine && !expanded)
+                container.addChild(errorLineBlock(errorLine, theme));
+            if (expanded) {
+                const indent = " ".repeat(rowIndent() + 4);
+                const code = context.state.code ?? "";
+                const output = context.state.output ?? "";
+                container.addChild({
+                    render(width) {
+                        const lines = [];
+                        if (code)
+                            lines.push(...ruledLines(code.trimEnd(), width, theme, indent, `// script \u00b7 ${code.trimEnd().split("\n").length} lines`));
+                        if (output)
+                            lines.push(...ruledLines(output, width, theme, indent, "// output"));
+                        return lines;
+                    },
+                    invalidate() { },
+                });
+            }
+            return container;
+        },
+    };
+}
 /**
  * Attach the compact renderers to the built-in tools without re-registering them. Registered at
  * extension load so a resumed transcript draws its earlier tool calls the same way as new ones.
@@ -165,6 +301,8 @@ export function installToolRenderers(pi) {
     if (typeof pi.registerToolRenderer !== "function")
         return;
     pi.registerToolRenderer((toolName, next) => {
+        if (toolName === "codemode")
+            return codemodeRenderers();
         if (!isToolKind(toolName))
             return next();
         return compactRenderers(toolName);
