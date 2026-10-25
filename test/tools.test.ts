@@ -1,7 +1,17 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
-import { codemodeRenderers, compactRenderers, installToolRenderers, isToolKind, stopLiveWatch } from "../src/tools.js"
+import {
+	codemodeRenderers,
+	compactRenderers,
+	genericItem,
+	genericOutcome,
+	genericRenderers,
+	genericVerb,
+	installToolRenderers,
+	isToolKind,
+	stopLiveWatch,
+} from "../src/tools.js"
 
 test("isToolKind recognises the built-in tools only", () => {
 	for (const name of ["bash", "read", "edit", "write", "grep", "find", "ls"]) assert.equal(isToolKind(name), true)
@@ -19,7 +29,12 @@ test("installToolRenderers registers a resolver at load time that only claims bu
 	installToolRenderers(pi)
 	assert.ok(resolver, "resolver registered synchronously, before session_start")
 	const fallback = { renderShell: "default" }
-	assert.equal(resolver!("mcp__foo__bar", () => fallback), fallback)
+	const own = { renderCall() {}, renderResult() {} }
+	assert.equal(resolver!("subagent", () => own), own, "tools with their own renderer keep it")
+	const generic = resolver!("mcp__foo__bar", () => fallback) as { renderShell?: string; renderCall?: unknown }
+	assert.equal(generic.renderShell, "self", "renderer-less tools get the compact row")
+	assert.equal(typeof generic.renderCall, "function")
+	assert.equal((resolver!("mcp__foo__bar", () => undefined) as { renderShell?: string }).renderShell, "self")
 	const codemode = resolver!("codemode", () => fallback) as { renderShell?: string }
 	assert.equal(codemode.renderShell, "self")
 	const mine = resolver!("bash", () => fallback) as { renderShell?: string }
@@ -90,7 +105,7 @@ test("codemode renders one parent row plus one child row per nested call, no scr
 	assert.equal(lines.length, 3)
 	assert.match(lines[0], /✓ code\s+2 calls · plan_tracker, bash\s+2 lines · 1.2s$/)
 	assert.match(lines[1], /✓ plan_tracker action=update index=6 status=complete\s+0.3s$/)
-	assert.match(lines[2], /✓ bash\s+cd ~\/r && sed -n 1,2p a.md\s+0.6s$/)
+	assert.match(lines[2], /✓ bash\s+r › sed -n 1,2p a.md\s+0.6s$/)
 	assert.ok(lines.every((line) => !line.includes("await")), "script hidden when collapsed")
 	assert.deepEqual(body.render(100), [])
 	for (const line of lines) assert.ok(line.length <= 100)
@@ -122,4 +137,42 @@ test("codemode shows nested calls live while the script is still running", () =>
 	assert.match(lines[1], /[◐◓] bash sleep 5/)
 	assert.equal((context.state as { done?: boolean }).done, undefined)
 	stopLiveWatch()
+})
+
+test("generic rows label MCP and agent tools and read arguments as key=value", () => {
+	assert.equal(genericVerb("mcp__re_mcp__query_prometheus"), "mcp")
+	assert.equal(genericVerb("subagents_enable"), "agent")
+	assert.equal(genericVerb("todo"), "tool")
+	assert.equal(genericItem("mcp__re_mcp__query_prometheus", { query: "sum(rate(x[5m]))", limit: 5 }), "re_mcp · query_prometheus query=sum(rate(x[5m])) limit=5")
+	assert.equal(genericItem("subagents_enable", {}), "subagents_enable")
+	assert.equal(genericItem("todo", { action: "add", text: "line one\nline two" }), "todo action=add text=line one")
+})
+
+test("generic outcomes show a short first line verbatim, otherwise a line count", () => {
+	const text = (s: string) => ({ content: [{ type: "text", text: s }] })
+	assert.deepEqual(genericOutcome(text("Updated (9/9 done)"), false, 300), { text: "Updated (9/9 done) · 0.3s" })
+	assert.deepEqual(genericOutcome(text("Enabled: subagent. If your tool list includes subagent, call it now."), false, 0), { text: "1 line · 0s" })
+	assert.deepEqual(genericOutcome(text("a\nb\n"), false, 1400), { text: "2 lines · 1.4s" })
+	assert.deepEqual(genericOutcome(text(""), false, undefined), { text: "ok" })
+	assert.deepEqual(genericOutcome(text("\nboom\nmore"), true, 100), { text: "failed · 0.1s", errorLine: "boom" })
+})
+
+test("generic renderer draws one row, an error line on failure, and output on expand", () => {
+	const r = genericRenderers("mcp__re_mcp__query_prometheus")
+	const make = (extra: Record<string, unknown> = {}) => ({ toolCallId: "g1", invalidate() {}, state: {}, isPartial: false, isError: false, durationMs: 1400, ...extra })
+	const args = { query: "up" }
+	let context = make()
+	r.renderResult!({ content: [{ type: "text", text: "a\nb\nc" }] } as never, { expanded: false, isPartial: false } as never, plainTheme, context as never)
+	const [line, ...rest] = r.renderCall!(args as never, plainTheme, context as never).render(90)
+	assert.match(line, /✓ mcp\s+re_mcp · query_prometheus query=up\s+3 lines · 1.4s$/)
+	assert.equal(rest.length, 0)
+
+	context = make({ isError: true })
+	const failed = r.renderResult!({ content: [{ type: "text", text: "401 unauthorized" }] } as never, { expanded: false, isPartial: false } as never, plainTheme, context as never)
+	assert.match(r.renderCall!(args as never, plainTheme, context as never).render(90)[0], /✗ mcp .*failed · 1.4s$/)
+	assert.match(failed.render(90).join(""), /│ 401 unauthorized/)
+
+	context = make({ expanded: true })
+	const open = r.renderResult!({ content: [{ type: "text", text: "a\nb" }] } as never, { expanded: true, isPartial: false } as never, plainTheme, context as never)
+	assert.deepEqual(open.render(90).map((l) => l.trim()), ["│ a", "│ b"])
 })

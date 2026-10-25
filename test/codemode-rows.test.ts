@@ -21,7 +21,7 @@ test("parseArgs reads complete JSON and recovers keys from a preview cut at 200 
 })
 
 test("nestedItem reads built-ins like their top-level rows and others as key=value", () => {
-	assert.equal(nestedItem({ name: "bash", args: '{"command":"git status\\ngit diff","timeout":10}' }), "git status")
+	assert.equal(nestedItem({ name: "bash", args: '{"command":"git status\\ngit diff","timeout":10}' }), "git status · +1 line")
 	assert.equal(nestedItem({ name: "read", args: '{"path":"/a/b/c/file.ts"}' }), "c/file.ts")
 	assert.equal(
 		nestedItem({ name: "plan_tracker", args: '{"action":"update","index":6,"status":"complete"}' }),

@@ -67,19 +67,24 @@ export function formatTrackerLines(
   }
   if (tasks && tasks.length > 0) {
     const done = tasks.filter((t) => t.status === "complete").length
-    const icons = tasks
-      .map((t) => {
-        if (t.status === "complete") return theme.fg("success", "✓")
-        if (t.status === "in_progress") return theme.fg("warning", "→")
-        if (t.status === "failed") return theme.fg("error", "✗")
-        return theme.fg("dim", "○")
-      })
-      .join("")
+    // One segment per task, coloured by status, so the list reads as a single bar instead of a
+    // row of check marks. Past 12 tasks the bar is scaled to 10 segments (status order kept).
+    const segment = (status: string | undefined) => {
+      if (status === "complete") return theme.fg("success", "▰")
+      if (status === "in_progress") return theme.fg("warning", "▰")
+      if (status === "failed") return theme.fg("error", "▰")
+      return theme.fg("dim", "▱")
+    }
+    const shown =
+      tasks.length <= 12
+        ? tasks.map((t) => t.status)
+        : Array.from({ length: 10 }, (_, i) => tasks[Math.floor((i * tasks.length) / 10)]?.status)
+    const icons = shown.map(segment).join("")
     const current =
       tasks.find((t) => t.status === "in_progress") ?? tasks.find((t) => t.status === "pending")
     const name = current ? theme.fg("text", ` ${current.name}`) : ""
     lines.push(
-      `${theme.fg("muted", "Tasks")} ${icons} ${theme.fg("dim", `(${done}/${tasks.length})`)}${name}`,
+      `${theme.fg("muted", "Tasks")} ${icons} ${theme.fg("dim", `${done}/${tasks.length}`)}${name}`,
     )
   }
   return lines

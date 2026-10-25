@@ -158,6 +158,122 @@ export function compactRenderers(kind) {
         },
     };
 }
+/** One `glyph verb item … outcome` line in the tool-row grid, shared by every self-rendered row. */
+function rowLine(theme, width, status, frame, verb, item, right) {
+    const inner = Math.max(8, width - rowIndent());
+    const row = layoutRow(inner, verb, item, right);
+    const rightColor = status === "running" ? "warning" : status === "error" ? "error" : "dim";
+    return (" ".repeat(rowIndent()) +
+        theme.fg(statusColor(status), rowGlyph(status, frame)) +
+        " " +
+        theme.fg("dim", row.verb) +
+        " " +
+        theme.fg(status === "error" ? "text" : "muted", row.item) +
+        " ".repeat(row.gap) +
+        theme.fg(rightColor, row.outcome));
+}
+/** Longest first result line shown verbatim as an outcome; longer results show a line count. */
+const OUTCOME_TEXT_MAX = 24;
+/** `mcp` for MCP tools, `agent` for subagent tools, `tool` for anything else. */
+export function genericVerb(toolName) {
+    if (toolName.startsWith("mcp__"))
+        return "mcp";
+    if (/subagent/.test(toolName))
+        return "agent";
+    return "tool";
+}
+/** `server · tool key=value …` for MCP tools, `name key=value …` for the rest. */
+export function genericItem(toolName, args) {
+    let json;
+    try {
+        json = JSON.stringify(args ?? {}) ?? "";
+    }
+    catch {
+        json = "";
+    }
+    const params = nestedItem({ name: toolName, args: json });
+    const mcp = /^mcp__(.+?)__(.+)$/.exec(toolName);
+    const label = mcp ? `${mcp[1]} \u00b7 ${mcp[2]}` : toolName;
+    return params ? `${label} ${params}` : label;
+}
+export function genericOutcome(result, isError, durationMs) {
+    const text = resultText(result);
+    const dur = formatDuration(durationMs);
+    const join = (...parts) => parts.filter(Boolean).join(" \u00b7 ");
+    const lines = text.split("\n").filter((line) => line.trim().length > 0);
+    if (isError)
+        return { text: join("failed", dur), errorLine: lines[0]?.trim() ?? "" };
+    if (lines.length === 0)
+        return { text: join("ok", dur) };
+    const first = lines[0].trim();
+    if (lines.length === 1 && visibleWidth(first) <= OUTCOME_TEXT_MAX)
+        return { text: join(first, dur) };
+    return { text: join(`${lines.length} line${lines.length === 1 ? "" : "s"}`, dur) };
+}
+/**
+ * A one-line row for tools that bring no renderer of their own (most MCP tools,
+ * `subagents_enable`): `\u2713 mcp   re_mcp \u00b7 query_prometheus query=\u2026   12 lines \u00b7 1.4s`.
+ * Without it they fall through to pi-core's default: bold name, JSON arguments, a text preview.
+ */
+export function genericRenderers(toolName) {
+    const verb = genericVerb(toolName);
+    return {
+        renderShell: "self",
+        renderCall(args, theme, rawContext) {
+            const context = rawContext;
+            const id = context.toolCallId || toolName;
+            const item = genericItem(toolName, args);
+            const running = rowIsRunning(context);
+            context.state.running = running;
+            if (running) {
+                context.state.startedAt ??= Date.now();
+                live.watch(id, context.invalidate);
+            }
+            else
+                live.unwatch(id);
+            return {
+                render(width) {
+                    const status = rowStatus(context);
+                    const frame = status === "running" && live.has(id) ? live.frame : 0;
+                    const right = status === "running"
+                        ? context.state.startedAt
+                            ? formatDuration(Date.now() - context.state.startedAt)
+                            : ""
+                        : (context.state.outcome?.text ?? "");
+                    return [rowLine(theme, width, status, frame, verb, item, right)];
+                },
+                invalidate() { },
+            };
+        },
+        renderResult(result, options, theme, rawContext) {
+            const context = rawContext;
+            const typed = result;
+            if (!context.isPartial) {
+                context.state.done = true;
+                context.state.running = false;
+                context.state.outcome = genericOutcome(typed, Boolean(context.isError), context.durationMs);
+                live.unwatch(context.toolCallId || toolName);
+            }
+            const container = new Container();
+            const expanded = Boolean(options.expanded);
+            const errorLine = context.state.outcome?.errorLine;
+            if (errorLine && !expanded)
+                container.addChild(errorLineBlock(errorLine, theme));
+            if (expanded) {
+                const text = resultText(typed);
+                if (text) {
+                    const indent = " ".repeat(rowIndent() + 2);
+                    container.addChild({ render: (width) => ruledLines(text, width, theme, indent), invalidate() { } });
+                }
+            }
+            return container;
+        },
+    };
+}
+/** True when a tool definition draws its own call or result. */
+function hasOwnRenderer(definition) {
+    return typeof definition?.renderCall === "function" || typeof definition?.renderResult === "function";
+}
 /** Max nested calls shown under a collapsed codemode row; the rest are counted. */
 const NESTED_PREVIEW = 8;
 /** Width of the nested tool-name column. */
@@ -209,19 +325,7 @@ export function codemodeRenderers() {
                     const frame = status === "running" && live.has(id) ? live.frame : 0;
                     const calls = state.calls ?? [];
                     const right = status === "running" ? (state.startedAt ? formatDuration(Date.now() - state.startedAt) : "") : (state.outcome?.text ?? "");
-                    const inner = Math.max(8, width - rowIndent());
-                    const row = layoutRow(inner, "code", callSummary(calls), right);
-                    const rightColor = status === "running" ? "warning" : status === "error" ? "error" : "dim";
-                    const lines = [
-                        " ".repeat(rowIndent()) +
-                            theme.fg(statusColor(status), rowGlyph(status, frame)) +
-                            " " +
-                            theme.fg("dim", row.verb) +
-                            " " +
-                            theme.fg(status === "error" ? "text" : "muted", row.item) +
-                            " ".repeat(row.gap) +
-                            theme.fg(rightColor, row.outcome),
-                    ];
+                    const lines = [rowLine(theme, width, status, frame, "code", callSummary(calls), right)];
                     const expanded = Boolean(context.expanded);
                     const shown = expanded ? calls : calls.slice(-NESTED_PREVIEW);
                     const childIndent = " ".repeat(rowIndent() + 4);
@@ -303,8 +407,12 @@ export function installToolRenderers(pi) {
     pi.registerToolRenderer((toolName, next) => {
         if (toolName === "codemode")
             return codemodeRenderers();
-        if (!isToolKind(toolName))
-            return next();
-        return compactRenderers(toolName);
+        if (isToolKind(toolName))
+            return compactRenderers(toolName);
+        // Tools that draw themselves (subagent's live view, gauntlet's trackers) keep their look.
+        const definition = next();
+        if (hasOwnRenderer(definition))
+            return definition;
+        return { ...definition, ...genericRenderers(toolName) };
     });
 }

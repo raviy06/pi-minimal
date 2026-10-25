@@ -31,9 +31,46 @@ export function shortName(path: string): string {
   return parts.slice(-2).join("/")
 }
 
+let sessionCwd: string | undefined
+let homeDir: string | undefined = process.env.HOME
+
+/** The session cwd, so `cd <cwd> && \u2026` can be dropped from bash rows. */
+export function setSessionCwd(cwd: string | undefined, home = process.env.HOME): void {
+  sessionCwd = cwd
+  homeDir = home
+}
+
+const CD_PREFIX = /^cd\s+("[^"]+"|'[^']+'|\S+)\s*&&\s*/
+
+function expandHome(path: string): string {
+  const unquoted = path.replace(/^(["'])(.*)\1$/, "$2").replace(/\/+$/, "")
+  if (homeDir && (unquoted === "~" || unquoted.startsWith("~/"))) return homeDir + unquoted.slice(1)
+  return unquoted
+}
+
+/**
+ * The item column of a bash row. Long agent commands usually start with `cd <repo> && `, which
+ * pushes the part that differs between rows off the screen: drop it when it is the session cwd,
+ * otherwise shorten it to the directory name (`pi-subagents \u203a sed -n \u2026`). Multi-line
+ * commands (heredocs, scripts) say how many lines follow instead of ending at `<<'EOF'`.
+ */
+export function bashItem(command: string): string {
+  const lines = command.replace(/\r/g, "").trim().split("\n")
+  let first = lines[0]?.trim() ?? ""
+  const cd = CD_PREFIX.exec(first)
+  if (cd && first.length > cd[0].length) {
+    const target = expandHome(cd[1])
+    const rest = first.slice(cd[0].length)
+    const cwd = sessionCwd?.replace(/\/+$/, "")
+    first = cwd && target === cwd ? rest : `${target.split("/").filter(Boolean).at(-1) ?? target} \u203a ${rest}`
+  }
+  const more = lines.slice(1).filter((line) => line.trim()).length
+  return more > 0 ? `${first} \u00b7 +${more} line${more === 1 ? "" : "s"}` : first
+}
+
 export function toolItem(kind: ToolKind, args: ToolArgs | undefined): string {
   if (kind === "bash") {
-    const command = typeof args?.command === "string" ? args.command.split("\n")[0]?.trim() ?? "" : ""
+    const command = typeof args?.command === "string" ? bashItem(args.command) : ""
     return command || "bash"
   }
   if (kind === "grep" || kind === "find") {
