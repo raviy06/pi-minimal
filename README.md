@@ -30,14 +30,14 @@ Do not load this package beside the live `grok-chrome` extension. Disable or rem
 
 ## What it changes
 
-- **Tool rows** – every built-in tool call (`bash`, `read`, `edit`, `write`, `grep`, `find`, `ls`) renders as one line: status glyph (`◐` running, `✓` ok, `✗` failed), verb, item, and a right-aligned outcome (`34 lines · 1.0s`, `exit 1`, `+3 −1`, `4 matches`). Failed rows show the first line of output underneath; `ctrl+o` expands full output in a `│`-ruled block.
+- **Tool rows** – every built-in tool call (`bash`, `read`, `edit`, `write`, `grep`, `find`, `ls`) renders as one line: status glyph (`◐` running, `✓` ok, `✗` failed), verb, item, and a right-aligned outcome (`34 lines · 1.0s`, `exit 1`, `+3 −1`, `4 matches`). Failed rows show the first line of output underneath; `ctrl+o` expands full output in a `│`-ruled block. `codemode` renders the same way, as a `code` row with one child row per nested tool call; `ctrl+o` shows the script and its output.
 - **Turn rule** – after each agent run a dim `── 15:51 · 12s · 4 tools ──` separator is appended (stored as a custom entry; never sent to the model).
 - **Thinking gutter** – thinking paragraphs are prefixed with `┊` so they read as secondary.
 - **Status line** – one line above the editor: model · thinking level · context meter (amber at 70 %, red at 90 %) · cwd · `⎇ branch ±dirty` · Herdr siblings.
 - **Footer** – key hints appear only when the agent is idle and the editor is empty; `/compact` is suggested under context pressure.
 - **Code blocks** – fenced code renders as a closed box with the language as its title, keeping syntax highlighting, instead of literal ``` lines; long lines wrap inside the box.
 - **Alignment** – chrome follows pi's `outputPad` setting. Pi's editor uses the separate `editorPaddingX` setting (default `0`); set `"editorPaddingX": 1` for a flush left edge with the transcript.
-- **Theme** – ships `minimal-dark`: neutral tool backgrounds, visible user-message tint, dimmer thinking text, violet headings (yellow is reserved for warnings), and faint code-block frames. Select it in `/settings` → Theme, or set `"theme": "minimal-dark"`.
+- **Theme** – ships `minimal-dark`: no background behind tool rows (failures excepted), a grey ladder whose readable tiers stay near 4.5:1, syntax colours kept off the status hues, visible user-message tint, dimmer thinking text, violet headings (yellow is reserved for warnings), and faint code-block frames. Select it in `/settings` → Theme, or set `"theme": "minimal-dark"`.
 
 ## Configuration
 

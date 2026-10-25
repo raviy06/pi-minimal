@@ -10,6 +10,29 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-25
+
+### Added
+- `codemode` renders as a tool row: `✓ code  3 calls · plan_tracker ×2, bash … 54 lines · 1.2s`,
+  with one child row per nested call. Built-in tools inside a script read exactly like their
+  top-level rows (`bash` shows its command); other tools show up to three scalar arguments as
+  `key=value` instead of raw JSON. Children update live while the script runs. The script source
+  and output appear only on `ctrl+o`, in plain dim text, so syntax colours no longer compete with
+  status colours. A failed nested call or script error shows its first line under the row, like
+  `bash`. Previously codemode fell through to pi-core's default panel: a background slab with the
+  highlighted script, JSON arguments, an output preview and a `Took …` timer.
+
+### Changed
+- `minimal-dark` contrast: `dim` (verbs, outcomes, tool output) L 48 % → 56 % and `thinkingText`
+  52 % → 58 %, estimated ~3.1:1 → ~4.4:1 and ~3.7:1 → ~4.8:1 on the background. They were within
+  4 % of each other and below WCAG's 4.5:1 text target. `faint` 34 % → 36 %.
+- `minimal-dark` keeps syntax colours off the status hues: `syntaxFunction` was warning-yellow
+  (now lavender) and `syntaxNumber` was success-green (now teal), so code no longer looks like a
+  spinner or a check mark.
+- `minimal-dark` draws no background behind pending/successful tool output (`toolPendingBg`,
+  `toolSuccessBg` → `bg`). Tools pi-minimal does not restyle yet (`subagent`, MCP tools) lose
+  their slab; failures keep `toolErrorBg`.
+
 ## [0.2.3] - 2026-10-24
 
 ### Added
