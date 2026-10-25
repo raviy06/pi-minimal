@@ -10,6 +10,28 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-25
+
+### Added
+- Compact rows for tools that bring no renderer of their own, such as most MCP tools and
+  `subagents_enable`: `✓ mcp   re_mcp · query_prometheus query=… step=1m   12 lines · 1.4s`.
+  The verb is `mcp`, `agent` (subagent tools) or `tool`; up to three scalar arguments show as
+  `key=value`; a short single-line result shows verbatim, otherwise a line count. Failures show
+  their first line underneath; `ctrl+o` shows the full result. Tools that draw themselves
+  (the `subagent` live view, pi-gauntlet's trackers) keep their own renderer.
+
+### Changed
+- Bash rows drop `cd <session cwd> && ` and shorten other `cd <dir> && ` prefixes to the
+  directory name (`pi-subagents › sed -n …`), so the part that differs between rows is visible
+  and the outcome column stays put. Multi-line commands such as heredocs say how many lines follow
+  (`python3 - <<'EOF' · +4 lines`).
+- The thinking gutter `┊` now runs down every line of a thinking paragraph, including lines the
+  terminal wraps: paragraphs are pre-wrapped to the content width the host renders at (re-done on
+  resize). Previously only the first line of each paragraph had it, so wrapped thinking sat flush
+  with prose. Inline code stays whole; lists, quotes and fenced code are untouched.
+- The task tracker line is a segmented bar coloured by status (`Tasks ▰▰▰▰▱ 4/5`) instead of a
+  run of check marks; past 12 tasks it scales to 10 segments.
+
 ## [0.3.0] - 2026-10-25
 
 ### Added

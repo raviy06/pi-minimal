@@ -8,6 +8,7 @@ import {
 	formatOutcome,
 	layoutRow,
 	rowGlyph,
+	setSessionCwd,
 	shortName,
 	toolItem,
 } from "../src/tool-rows.js"
@@ -15,7 +16,7 @@ import {
 const text = (s: string) => ({ content: [{ type: "text", text: s }] })
 
 test("toolItem picks the first command line for bash and a two-segment path otherwise", () => {
-	assert.equal(toolItem("bash", { command: "git status\ngit diff" }), "git status")
+	assert.equal(toolItem("bash", { command: "git status" }), "git status")
 	assert.equal(toolItem("read", { path: "/a/b/c/file.ts" }), "c/file.ts")
 	assert.equal(toolItem("grep", { pattern: "foo" }), "foo")
 	assert.equal(toolItem("ls", {}), "ls")
@@ -106,4 +107,19 @@ test("layoutRow drops the outcome when the row is too narrow", () => {
 	const row = layoutRow(20, "bash", "short", "34 lines · 1.0s")
 	assert.equal(row.outcome, "")
 	assert.equal(row.gap, 0)
+})
+
+test("bash items drop cd into the session cwd, shorten other cd targets, and count extra lines", () => {
+	setSessionCwd("/Users/me/repo", "/Users/me")
+	try {
+		assert.equal(toolItem("bash", { command: "cd /Users/me/repo && npm test" }), "npm test")
+		assert.equal(toolItem("bash", { command: "cd ~/repo/ && npm test" }), "npm test")
+		assert.equal(toolItem("bash", { command: "cd ~/Dev/src/github.com/raviy06/pi-subagents && sed -n 1,2p a.ts" }), "pi-subagents › sed -n 1,2p a.ts")
+		assert.equal(toolItem("bash", { command: 'cd "/tmp/with space" && ls' }), "with space › ls")
+		assert.equal(toolItem("bash", { command: "cd /tmp" }), "cd /tmp", "a bare cd stays as written")
+		assert.equal(toolItem("bash", { command: "cd ~/repo && python3 - <<'EOF'\nprint(1)\n\nprint(2)\nEOF" }), "python3 - <<'EOF' · +3 lines")
+		assert.equal(toolItem("bash", { command: "git status\ngit diff" }), "git status · +1 line")
+	} finally {
+		setSessionCwd(undefined)
+	}
 })
