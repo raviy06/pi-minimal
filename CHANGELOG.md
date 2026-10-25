@@ -25,6 +25,10 @@ Releases are cut automatically: when the `version` in `package.json` changes on
   directory name (`pi-subagents › sed -n …`), so the part that differs between rows is visible
   and the outcome column stays put. Multi-line commands such as heredocs say how many lines follow
   (`python3 - <<'EOF' · +4 lines`).
+- The thinking gutter `┊` now runs down every line of a thinking paragraph, including lines the
+  terminal wraps: paragraphs are pre-wrapped to the content width the host renders at (re-done on
+  resize). Previously only the first line of each paragraph had it, so wrapped thinking sat flush
+  with prose. Inline code stays whole; lists, quotes and fenced code are untouched.
 - The task tracker line is a segmented bar coloured by status (`Tasks ▰▰▰▰▱ 4/5`) instead of a
   run of check marks; past 12 tasks it scales to 10 segments.
 
