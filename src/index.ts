@@ -8,6 +8,7 @@ import { installCwd } from "./cwd.js"
 import { listSiblings, parseAgentList, parseTabList, type Sibling } from "./herdr.js"
 import { hideGauntletWidgets } from "./tracker.js"
 import { installToolRenderers, stopLiveWatch } from "./tools.js"
+import { setSessionCwd } from "./tool-rows.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
 import { installWorkingStatus } from "./working-status.js"
 import { installTurnRule } from "./turn-rule.js"
@@ -167,6 +168,7 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
     })
     hideWidgets = config.hideGauntletWidgets
     currentCwd = ctx.cwd
+    setSessionCwd(ctx.cwd)
     try {
       const settings = SettingsManager.create(ctx.cwd, undefined, { projectTrusted: ctx.isProjectTrusted() })
       setChromeMargin(settings.getOutputPad())
