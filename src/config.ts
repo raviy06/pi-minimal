@@ -2,12 +2,18 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent"
 
+/** When an `edit` row shows its diff: inline as soon as the edit lands, never, or only while expanded with ctrl+o. */
+export type EditDiffMode = "always" | "never" | "expanded"
+export const EDIT_DIFF_MODES: readonly EditDiffMode[] = ["always", "never", "expanded"]
+
 export type PiMinimalConfig = {
 	hideGauntletWidgets: boolean
+	editDiff: EditDiffMode
 }
 
 const DEFAULTS: PiMinimalConfig = {
 	hideGauntletWidgets: true,
+	editDiff: "expanded",
 }
 
 export function loadPiMinimalConfig(options: {
@@ -44,16 +50,20 @@ function applyLayer(config: PiMinimalConfig, path: string): void {
 		return
 	}
 
+	// Each key is validated on its own so one bad value does not discard the rest of the layer.
 	const record = parsed as Record<string, unknown>
-	if (!Object.hasOwn(record, "hideGauntletWidgets")) {
-		return
+	if (Object.hasOwn(record, "hideGauntletWidgets")) {
+		const value = record.hideGauntletWidgets
+		if (typeof value === "boolean") config.hideGauntletWidgets = value
+		else console.error(`pi-minimal: hideGauntletWidgets must be a boolean in ${path}`)
 	}
-
-	const value = record.hideGauntletWidgets
-	if (typeof value !== "boolean") {
-		console.error(`pi-minimal: hideGauntletWidgets must be a boolean in ${path}`)
-		return
+	if (Object.hasOwn(record, "editDiff")) {
+		const value = record.editDiff
+		if (isEditDiffMode(value)) config.editDiff = value
+		else console.error(`pi-minimal: editDiff must be one of ${EDIT_DIFF_MODES.map((mode) => `"${mode}"`).join(", ")} in ${path}`)
 	}
+}
 
-	config.hideGauntletWidgets = value
+function isEditDiffMode(value: unknown): value is EditDiffMode {
+	return typeof value === "string" && (EDIT_DIFF_MODES as readonly string[]).includes(value)
 }

@@ -10,6 +10,20 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-27
+
+### Added
+
+- `editDiff` setting in `pi-minimal.json`: controls whether an `edit` row shows the
+  change itself. `"expanded"` (default) shows the unified diff in the `│`-ruled
+  block when the row is expanded with `ctrl+o`, where the bare "Successfully
+  replaced" text used to be. `"always"` shows it inline as soon as the edit lands,
+  capped at 40 lines with `… N more lines (ctrl+o)` for the rest. `"never"` keeps
+  the stats-only row. Lines use the theme's `toolDiffAdded` / `toolDiffRemoved` /
+  `toolDiffContext` colours and keep pi's line-number gutter; when one line
+  replaces one line, only the changed tokens are inverse-highlighted, as in pi's
+  own edit renderer. Failed edits and results without a diff are unchanged.
+
 ## [0.3.1] - 2026-10-25
 
 ### Added

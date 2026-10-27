@@ -49,10 +49,13 @@ The package loads JSON in this order:
 
 Project values override global values. A missing file, omitted key, or invalid value does not override the lower-precedence value.
 
-The only supported key is `hideGauntletWidgets`. It defaults to `true`.
+Supported keys:
+
+- `hideGauntletWidgets` (boolean, default `true`).
+- `editDiff` (`"always"` | `"never"` | `"expanded"`, default `"expanded"`) – when an `edit` row shows its diff. `"expanded"` puts it behind `ctrl+o`; `"always"` shows it inline as the edit lands (first 40 lines, the rest behind `ctrl+o`); `"never"` keeps the `+3 −1` stats only.
 
 ```json
-{ "hideGauntletWidgets": true }
+{ "hideGauntletWidgets": true, "editDiff": "always" }
 ```
 
 ## Optional footer activity API

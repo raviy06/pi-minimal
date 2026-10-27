@@ -7,7 +7,7 @@ import { bindFooterContributionEvents } from "./footer-contribution-events.js"
 import { installCwd } from "./cwd.js"
 import { listSiblings, parseAgentList, parseTabList, type Sibling } from "./herdr.js"
 import { hideGauntletWidgets } from "./tracker.js"
-import { installToolRenderers, stopLiveWatch } from "./tools.js"
+import { installToolRenderers, setEditDiffMode, stopLiveWatch } from "./tools.js"
 import { setSessionCwd } from "./tool-rows.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
 import { installWorkingStatus } from "./working-status.js"
@@ -167,6 +167,7 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
       projectTrusted: ctx.isProjectTrusted(),
     })
     hideWidgets = config.hideGauntletWidgets
+    setEditDiffMode(config.editDiff)
     currentCwd = ctx.cwd
     setSessionCwd(ctx.cwd)
     try {
