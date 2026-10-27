@@ -10,6 +10,12 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+### Added
+
+- `write` rows show the written content (first 400 lines) when expanded with `ctrl+o`.
+- With `editDiff: "expanded"` (the default), diffs of up to 8 lines are shown inline;
+  hiding them saved nothing and cost a keypress. Longer diffs still wait for `ctrl+o`.
+
 ### Changed
 
 - `hideGauntletWidgets` now defaults to `false`. Hiding another extension's widgets is
@@ -21,6 +27,10 @@ Releases are cut automatically: when the `version` in `package.json` changes on
   Herdr pollers, the chrome) now lives on one `Session` object created at session start
   and disposed at shutdown or when the next session starts. Late async results from a
   disposed session are dropped instead of drawing into the new one.
+- The compact, generic and codemode tool rows are now three small strategies over one
+  row lifecycle (`createRowRenderers`): running state, live spinner, status colours,
+  the error line and expansion are implemented once. Edit-diff colouring moved to
+  `src/edit-diff.ts`. No visible change beyond the two items above.
 
 ### Fixed
 

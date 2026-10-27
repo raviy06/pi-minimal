@@ -52,7 +52,7 @@ Project values override global values. A missing file, omitted key, or invalid v
 Supported keys:
 
 - `hideGauntletWidgets` (boolean, default `false`) – when `true`, pi-minimal clears pi-gauntlet's `phase_tracker` and `plan_tracker` widgets each time it re-asserts its chrome (session start, turn end, tool end).
-- `editDiff` (`"always"` | `"never"` | `"expanded"`, default `"expanded"`) – when an `edit` row shows its diff. `"expanded"` puts it behind `ctrl+o`; `"always"` shows it inline as the edit lands (first 40 lines, the rest behind `ctrl+o`); `"never"` keeps the `+3 −1` stats only.
+- `editDiff` (`"always"` | `"never"` | `"expanded"`, default `"expanded"`) – when an `edit` row shows its diff. `"expanded"` shows diffs of up to 8 lines inline and puts longer ones behind `ctrl+o`; `"always"` shows every diff inline as the edit lands (first 40 lines, the rest behind `ctrl+o`); `"never"` keeps the `+3 −1` stats only. `write` rows show the written content behind `ctrl+o`.
 
 ```json
 { "hideGauntletWidgets": true, "editDiff": "always" }

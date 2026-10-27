@@ -192,10 +192,15 @@ function editRows(expanded: boolean, result: unknown = editResult, isError = fal
 	return block.render(80).map((line) => line.trimEnd())
 }
 
-test("editDiff=expanded (default) shows the diff only behind ctrl+o, in the theme's diff colours", (t) => {
+const longDiff = (n: number) => ({ content: [{ type: "text", text: "ok" }], details: { diff: Array.from({ length: n }, (_, i) => `+${i + 1} line ${i}`).join("\n") } })
+
+test("editDiff=expanded (default) shows small diffs inline and larger ones only behind ctrl+o", (t) => {
 	t.after(() => setEditDiffMode("expanded"))
 	setEditDiffMode("expanded")
-	assert.deepEqual(editRows(false), [])
+	assert.equal(editRows(false).length, 4, "a 4-line diff is shown without ctrl+o")
+	assert.equal(editRows(false, longDiff(8)).length, 8, "8 lines is still small")
+	assert.deepEqual(editRows(false, longDiff(9)), [], "9 lines waits for ctrl+o")
+	assert.equal(editRows(true, longDiff(9)).length, 9)
 	const rows = editRows(true)
 	assert.equal(rows.length, 4)
 	assert.match(rows[0]!, /│ <context> 1 context$/)
@@ -227,7 +232,7 @@ test("editDiff=always shows the diff inline and editDiff=never only on request f
 test("editDiff=always truncates a long inline diff and leaves the full diff to ctrl+o", (t) => {
 	t.after(() => setEditDiffMode("expanded"))
 	setEditDiffMode("always")
-	const long = { content: [{ type: "text", text: "ok" }], details: { diff: Array.from({ length: 60 }, (_, i) => `+${i + 1} line ${i}`).join("\n") } }
+	const long = longDiff(60)
 	const inline = editRows(false, long)
 	assert.equal(inline.length, 41)
 	assert.match(inline[40]!, /… 20 more lines \(ctrl\+o\)$/)
@@ -240,4 +245,32 @@ test("edit failures and results without a diff never render a diff block", (t) =
 	assert.deepEqual(editRows(false, { content: [{ type: "text", text: "edited" }] }), [])
 	const failed = editRows(false, { content: [{ type: "text", text: "oldText not found" }] }, true)
 	assert.ok(failed.every((row) => !row.includes("<removed>")))
+})
+
+test("write rows show the written content on ctrl+o and nothing when collapsed", () => {
+	const renderers = compactRenderers("write")
+	const content = Array.from({ length: 450 }, (_, i) => `line ${i}`).join("\n")
+	const context = { args: { path: "a.ts", content }, toolCallId: "w1", invalidate() {}, state: {}, isPartial: false, isError: false, durationMs: 100 } as never
+	const result = { content: [{ type: "text", text: "Successfully wrote to a.ts" }] } as never
+	const collapsed = renderers.renderResult!(result, { expanded: false } as never, plainTheme, context).render(80)
+	assert.deepEqual(collapsed, [])
+	const expanded = renderers.renderResult!(result, { expanded: true } as never, plainTheme, context).render(80).map((l) => l.trimEnd())
+	assert.equal(expanded.length, 401)
+	assert.match(expanded[0]!, /│ line 0$/)
+	assert.match(expanded[400]!, /… 50 more lines$/)
+	const failed = { args: { path: "a.ts", content }, toolCallId: "w2", invalidate() {}, state: {}, isPartial: false, isError: true, durationMs: 100 } as never
+	const err = renderers.renderResult!({ content: [{ type: "text", text: "EACCES" }] } as never, { expanded: true } as never, plainTheme, failed).render(80)
+	assert.ok(err.every((l) => !l.includes("line 0")), "a failed write shows its error, not the content")
+})
+
+test("createRowRenderers keeps one live key per row across call and result", () => {
+	const renderers = compactRenderers("bash")
+	const state: Record<string, unknown> = {}
+	const call = { args: { command: "sleep 1" }, invalidate() {}, state, isPartial: true }
+	renderers.renderCall!({ command: "sleep 1" } as never, plainTheme, call as never)
+	assert.equal(state.liveId, "bash:sleep 1")
+	renderers.renderResult!({ content: [{ type: "text", text: "" }] } as never, { expanded: false } as never, plainTheme, { ...call, isPartial: false } as never)
+	assert.equal(state.liveId, "bash:sleep 1")
+	assert.equal((state as { running?: boolean }).running, false)
+	stopLiveWatch()
 })
