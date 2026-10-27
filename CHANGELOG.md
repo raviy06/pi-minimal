@@ -10,6 +10,26 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+### Changed
+
+- `hideGauntletWidgets` now defaults to `false`. Hiding another extension's widgets is
+  opt-in; set it to `true` to keep the previous behaviour.
+- Chrome is re-asserted only on events (session start and its two settle ticks, turn
+  end, tool end). The 200 ms interval that cleared pi-gauntlet's widgets five times a
+  second is gone; it never reinstalled the header or footer anyway.
+- All session-scoped state (config, cwd, the footer contribution registry, the git and
+  Herdr pollers, the chrome) now lives on one `Session` object created at session start
+  and disposed at shutdown or when the next session starts. Late async results from a
+  disposed session are dropped instead of drawing into the new one.
+
+### Fixed
+
+- The working message is cleared on session shutdown; it used to drop the context
+  before clearing and leave the last status on screen.
+- Git state reads the working directory once per refresh, so branch and dirty count
+  always describe the same tree, and one throwing change listener no longer blocks
+  the others.
+
 ## [0.4.0] - 2026-10-27
 
 ### Added

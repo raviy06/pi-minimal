@@ -12,7 +12,8 @@ export type PiMinimalConfig = {
 }
 
 const DEFAULTS: PiMinimalConfig = {
-	hideGauntletWidgets: true,
+	// Hiding another extension's widgets is opt-in.
+	hideGauntletWidgets: false,
 	editDiff: "expanded",
 }
 

@@ -11,7 +11,7 @@ No other Pi extension is required. Pi supplies the peer packages used by this ex
 
 Optional integrations:
 
-- `pi-gauntlet`: supplies the phase and task data shown in the footer. Its widgets are hidden by default.
+- `pi-gauntlet`: supplies the phase and task data shown in the footer. Set `hideGauntletWidgets: true` to also hide its own widgets, since the footer already shows that data.
 - Herdr: sibling status appears only when Pi is running inside Herdr.
 
 ## Installation
@@ -51,7 +51,7 @@ Project values override global values. A missing file, omitted key, or invalid v
 
 Supported keys:
 
-- `hideGauntletWidgets` (boolean, default `true`).
+- `hideGauntletWidgets` (boolean, default `false`) – when `true`, pi-minimal clears pi-gauntlet's `phase_tracker` and `plan_tracker` widgets each time it re-asserts its chrome (session start, turn end, tool end).
 - `editDiff` (`"always"` | `"never"` | `"expanded"`, default `"expanded"`) – when an `edit` row shows its diff. `"expanded"` puts it behind `ctrl+o`; `"always"` shows it inline as the edit lands (first 40 lines, the rest behind `ctrl+o`); `"never"` keeps the `+3 −1` stats only.
 
 ```json
