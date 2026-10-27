@@ -60,7 +60,8 @@ function normalizeSnapshot(input) {
 }
 function createFooterSlot(normalize, initialSessionId) {
     let sessionId = initialSessionId;
-    let owner;
+    // The registrant's `owner` string is a display identity; this symbol is the actual authority to publish.
+    let ownerToken;
     let snapshot;
     const observers = new Set();
     const notify = () => {
@@ -76,7 +77,7 @@ function createFooterSlot(normalize, initialSessionId) {
         subscribe(observer) { observers.add(observer); return () => { observers.delete(observer); }; },
         reset(nextSessionId) {
             sessionId = nextSessionId;
-            owner = undefined;
+            ownerToken = undefined;
             snapshot = undefined;
             notify();
         },
@@ -85,13 +86,13 @@ function createFooterSlot(normalize, initialSessionId) {
                 return { ok: false, code: "invalid" };
             if (sessionId === null || input.sessionId !== sessionId)
                 return { ok: false, code: "wrong-session" };
-            if (owner)
+            if (ownerToken)
                 return { ok: false, code: "occupied" };
             const token = Symbol(input.owner);
-            owner = token;
+            ownerToken = token;
             return { ok: true, registration: {
                     publish(input) {
-                        if (owner !== token)
+                        if (ownerToken !== token)
                             return { ok: false, code: "disposed" };
                         const next = normalize(input);
                         if (!next)
@@ -103,9 +104,9 @@ function createFooterSlot(normalize, initialSessionId) {
                         return { ok: true };
                     },
                     dispose() {
-                        if (owner !== token)
+                        if (ownerToken !== token)
                             return;
-                        owner = undefined;
+                        ownerToken = undefined;
                         snapshot = undefined;
                         notify();
                     },
@@ -115,16 +116,17 @@ function createFooterSlot(normalize, initialSessionId) {
 }
 export function createFooterContributions(initialSessionId = null) {
     const activity = createFooterSlot(normalizeSnapshot, initialSessionId);
-    const summary = createFooterSlot(normalizePlanSnapshot, initialSessionId);
+    // The plan slot; "summary" is its legacy wire name.
+    const plan = createFooterSlot(normalizePlanSnapshot, initialSessionId);
     return {
         read: activity.read,
-        readPlan: summary.read,
+        readPlan: plan.read,
         register: activity.register,
-        registerPlan: summary.register,
+        registerPlan: plan.register,
         subscribe(observer) {
-            const offActivity = activity.subscribe(observer), offSummary = summary.subscribe(observer);
-            return () => { offActivity(); offSummary(); };
+            const offActivity = activity.subscribe(observer), offPlan = plan.subscribe(observer);
+            return () => { offActivity(); offPlan(); };
         },
-        reset(sessionId) { activity.reset(sessionId); summary.reset(sessionId); },
+        reset(sessionId) { activity.reset(sessionId); plan.reset(sessionId); },
     };
 }

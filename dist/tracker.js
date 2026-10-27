@@ -1,5 +1,5 @@
 const PHASES = ["brainstorm", "plan", "implement", "verify", "ship"];
-function readSnapshot(ctx) {
+export function readGauntletProjection(ctx) {
     let phases;
     let tasks;
     for (const entry of ctx.sessionManager.getBranch()) {
@@ -21,7 +21,7 @@ function phaseActive(phases) {
     return PHASES.some((p) => phases[p]?.status && phases[p].status !== "pending");
 }
 export function formatTrackerLines(ctx, theme) {
-    const { phases, tasks } = readSnapshot(ctx);
+    const { phases, tasks } = readGauntletProjection(ctx);
     const lines = [];
     if (phases && phaseActive(phases)) {
         const parts = PHASES.map((p) => {

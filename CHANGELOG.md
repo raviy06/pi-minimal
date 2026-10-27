@@ -10,11 +10,21 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-27
+
+Session lifecycle, one tool-row lifecycle, and a domain glossary. `hideGauntletWidgets`
+is now opt-in and the 200 ms chrome steal interval is gone.
+
 ### Added
 
 - `write` rows show the written content (first 400 lines) when expanded with `ctrl+o`.
 - With `editDiff: "expanded"` (the default), diffs of up to 8 lines are shown inline;
   hiding them saved nothing and cost a keypress. Longer diffs still wait for `ctrl+o`.
+- `CONTEXT.md`: a glossary of the domain (chrome, reclaim, slots, owner token, the snapshot
+  kinds, plan vs the legacy pi-gauntlet projection, activity rows, hints, turn rule, working
+  status). The 0.1 spec and plan moved to `doc/archive/`.
+- The plan slot can be addressed as `slot: "plan"`; `summary` stays accepted as its legacy
+  name and the ready event now lists `["activity", "plan", "summary"]`.
 
 ### Changed
 
@@ -31,6 +41,12 @@ Releases are cut automatically: when the `version` in `package.json` changes on
   row lifecycle (`createRowRenderers`): running state, live spinner, status colours,
   the error line and expansion are implemented once. Edit-diff colouring moved to
   `src/edit-diff.ts`. No visible change beyond the two items above.
+- Internal renames for clarity: `TrackerSnapshot` → `GauntletProjection`,
+  `readSnapshot` → `readGauntletProjection`, the tracker's `TaskStatus` →
+  `GauntletTaskStatus`, and the slot's authority symbol is `ownerToken`. No wire change.
+- `doc/footer-contributions.md` now states precisely when the legacy projection is replaced
+  (only while a plan line renders), how control characters are sanitised (VT stripped,
+  C0/C1/bidi replaced with spaces), and that `inReview`/`blocked` are bounded individually.
 
 ### Fixed
 

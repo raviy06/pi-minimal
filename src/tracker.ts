@@ -3,18 +3,24 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
 const PHASES = ["brainstorm", "plan", "implement", "verify", "ship"] as const
 type PhaseName = (typeof PHASES)[number]
 type PhaseStatus = "pending" | "in_progress" | "complete" | "skipped"
-type TaskStatus = "pending" | "in_progress" | "complete" | "failed"
+/** pi-gauntlet's task statuses; distinct from the footer contribution API's `ActivityTask.status`. */
+type GauntletTaskStatus = "pending" | "in_progress" | "complete" | "failed"
 
 type PhaseMap = Record<PhaseName, { status: PhaseStatus; substep?: string | null }>
 
-type Task = { name: string; status: TaskStatus }
+type Task = { name: string; status: GauntletTaskStatus }
 
-export type TrackerSnapshot = {
+/**
+ * What pi-gauntlet last reported on this session branch, read from its `phase_tracker` and
+ * `plan_tracker` tool results. A projection of another extension's history, not a contribution:
+ * nothing is registered or versioned, so it is only as stable as those tools' `details` shapes.
+ */
+export type GauntletProjection = {
   phases?: PhaseMap
   tasks?: Task[]
 }
 
-function readSnapshot(ctx: ExtensionContext): TrackerSnapshot {
+export function readGauntletProjection(ctx: ExtensionContext): GauntletProjection {
   let phases: PhaseMap | undefined
   let tasks: Task[] | undefined
   for (const entry of ctx.sessionManager.getBranch()) {
@@ -47,7 +53,7 @@ export function formatTrackerLines(
   ctx: ExtensionContext,
   theme: { fg: (name: string, s: string) => string },
 ): string[] {
-  const { phases, tasks } = readSnapshot(ctx)
+  const { phases, tasks } = readGauntletProjection(ctx)
   const lines: string[] = []
   if (phases && phaseActive(phases)) {
     const parts = PHASES.map((p) => {

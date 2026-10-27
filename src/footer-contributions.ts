@@ -77,7 +77,8 @@ function normalizeSnapshot(input: unknown): ActivitySnapshot | undefined {
 
 function createFooterSlot<T extends { revision: number }>(normalize: (input: unknown) => T | undefined, initialSessionId: string | null) {
   let sessionId = initialSessionId
-  let owner: symbol | undefined
+  // The registrant's `owner` string is a display identity; this symbol is the actual authority to publish.
+  let ownerToken: symbol | undefined
   let snapshot: T | undefined
   const observers = new Set<() => void>()
   const notify = () => {
@@ -89,17 +90,17 @@ function createFooterSlot<T extends { revision: number }>(normalize: (input: unk
     read: () => snapshot,
     subscribe(observer: () => void) { observers.add(observer); return () => { observers.delete(observer) } },
     reset(nextSessionId: string | null) {
-      sessionId = nextSessionId; owner = undefined; snapshot = undefined; notify()
+      sessionId = nextSessionId; ownerToken = undefined; snapshot = undefined; notify()
     },
     register(input: unknown): RegistrationResult {
       if (!record(input) || !identity(input.owner) || typeof input.sessionId !== "string" || !input.sessionId) return { ok: false, code: "invalid" }
       if (sessionId === null || input.sessionId !== sessionId) return { ok: false, code: "wrong-session" }
-      if (owner) return { ok: false, code: "occupied" }
+      if (ownerToken) return { ok: false, code: "occupied" }
       const token = Symbol(input.owner)
-      owner = token
+      ownerToken = token
       return { ok: true, registration: {
         publish(input: unknown) {
-          if (owner !== token) return { ok: false, code: "disposed" }
+          if (ownerToken !== token) return { ok: false, code: "disposed" }
           const next = normalize(input)
           if (!next) return { ok: false, code: "invalid" }
           if (snapshot && next.revision <= snapshot.revision) return { ok: false, code: "stale" }
@@ -107,8 +108,8 @@ function createFooterSlot<T extends { revision: number }>(normalize: (input: unk
           return { ok: true }
         },
         dispose() {
-          if (owner !== token) return
-          owner = undefined; snapshot = undefined; notify()
+          if (ownerToken !== token) return
+          ownerToken = undefined; snapshot = undefined; notify()
         },
       } }
     },
@@ -116,17 +117,18 @@ function createFooterSlot<T extends { revision: number }>(normalize: (input: unk
 }
 export function createFooterContributions(initialSessionId: string | null = null) {
   const activity = createFooterSlot(normalizeSnapshot, initialSessionId)
-  const summary = createFooterSlot(normalizePlanSnapshot, initialSessionId)
+  // The plan slot; "summary" is its legacy wire name.
+  const plan = createFooterSlot(normalizePlanSnapshot, initialSessionId)
   return {
     read: activity.read,
-    readPlan: summary.read,
+    readPlan: plan.read,
     register: activity.register,
-    registerPlan: summary.register,
+    registerPlan: plan.register,
     subscribe(observer: () => void) {
-      const offActivity = activity.subscribe(observer), offSummary = summary.subscribe(observer)
-      return () => { offActivity(); offSummary() }
+      const offActivity = activity.subscribe(observer), offPlan = plan.subscribe(observer)
+      return () => { offActivity(); offPlan() }
     },
-    reset(sessionId: string | null) { activity.reset(sessionId); summary.reset(sessionId) },
+    reset(sessionId: string | null) { activity.reset(sessionId); plan.reset(sessionId) },
   }
 }
 export type FooterContributions = ReturnType<typeof createFooterContributions>

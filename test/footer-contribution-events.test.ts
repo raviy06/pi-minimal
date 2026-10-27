@@ -65,3 +65,18 @@ test("shutdown removes listeners, invalidates handles and emits unavailable once
   assert.equal(fresh.result, undefined)
   assert.deepEqual(handle.publish({}), { ok: false, code: "disposed" })
 })
+
+test("the plan slot accepts both its name and the legacy alias, and advertises all three", () => {
+  const events = bus(), registry = createFooterContributions()
+  let ready: { slots: string[] } | undefined
+  events.on(FOOTER_EVENTS.ready, (value) => { ready = value as { slots: string[] } })
+  bindFooterContributionEvents(events, registry, "S1", "tui")
+  assert.ok(ready)
+  assert.deepEqual(ready!.slots, ["activity", "plan", "summary"])
+  const viaPlan: RegisterRequest = { ...request(), slot: "plan", owner: "a" }
+  events.emit(FOOTER_EVENTS.register, viaPlan)
+  assert.ok(viaPlan.result?.ok)
+  const viaSummary: RegisterRequest = { ...request(), slot: "summary", owner: "b" }
+  events.emit(FOOTER_EVENTS.register, viaSummary)
+  assert.deepEqual(viaSummary.result, { ok: false, code: "occupied" }, "both names address the same slot")
+})
