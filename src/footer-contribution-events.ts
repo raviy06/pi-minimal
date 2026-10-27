@@ -5,8 +5,11 @@ export const FOOTER_EVENTS = {
   ready: "pi-minimal:footer:v1:ready",
   unavailable: "pi-minimal:footer:v1:unavailable",
 } as const
+/** Slot names on the wire. `summary` is the legacy name of the plan slot and stays accepted. */
+export const FOOTER_SLOTS = ["activity", "plan", "summary"] as const
+export type FooterSlot = typeof FOOTER_SLOTS[number]
 export type RegisterRequest = {
-  version: 1; sessionId: string; owner: string; slot: "activity" | "summary"
+  version: 1; sessionId: string; owner: string; slot: FooterSlot
   result?: RegistrationResult | { ok: false; code: "not-tui" }
 }
 type Events = {
@@ -22,11 +25,11 @@ export function bindFooterContributionEvents(events: Events, registry: FooterCon
     const request = value as Partial<RegisterRequest>
     // A different host may have answered first. Never overwrite its result.
     if (request.result !== undefined) return
-    if (request.version !== 1 || (request.slot !== "activity" && request.slot !== "summary")) request.result = { ok: false, code: "invalid" }
+    if (request.version !== 1 || !FOOTER_SLOTS.includes(request.slot as FooterSlot)) request.result = { ok: false, code: "invalid" }
     else if (mode !== "tui") request.result = { ok: false, code: "not-tui" }
-    else request.result = request.slot === "summary" ? registry.registerPlan(request) : registry.register(request)
+    else request.result = request.slot === "activity" ? registry.register(request) : registry.registerPlan(request)
   })
-  if (mode === "tui") events.emit(FOOTER_EVENTS.ready, { version: 1, sessionId, slots: ["activity", "summary"] })
+  if (mode === "tui") events.emit(FOOTER_EVENTS.ready, { version: 1, sessionId, slots: [...FOOTER_SLOTS] })
   let disposed = false
   return () => {
     if (disposed) return

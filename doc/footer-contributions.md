@@ -4,14 +4,14 @@ Pi-minimal remains the single footer owner. A trusted companion extension can pu
 
 Order: **input → existing hints → plan summary → activity rows last**. When either contribution is visible, a blank row separates the footer from input and separates each nonempty group. Agent rows stay compact, and empty groups leave no extra gaps. Legacy-only output is unchanged.
 
-Two independent slots are supported: `activity` and `summary`, with one owner per slot. An explicit plan summary replaces the legacy tracker projection while present, avoiding duplicate plan bars; clearing it restores the legacy summary. This is display composition, not a task tracker, subagent launcher, or PR/workspace display.
+Two independent slots are supported: `activity` and `plan`, with one owner per slot. (`summary` is the legacy wire name of the plan slot and remains accepted.) A rendered plan line replaces the legacy pi-gauntlet projection, avoiding duplicate plan bars; a plan snapshot that omits `plan`, or clearing the slot, lets the legacy projection show again. This is display composition, not a task tracker, subagent launcher, or PR/workspace display.
 
 ## Events
 
 | Event | Direction | Payload |
 |---|---|---|
 | `pi-minimal:footer:v1:register` | consumer → host | Mutable registration request; host assigns `result` synchronously |
-| `pi-minimal:footer:v1:ready` | host → consumers | `{ version: 1, sessionId, slots: ["activity", "summary"] }` |
+| `pi-minimal:footer:v1:ready` | host → consumers | `{ version: 1, sessionId, slots: ["activity", "plan", "summary"] }` |
 | `pi-minimal:footer:v1:unavailable` | host → consumers | `{ version: 1, sessionId }` |
 
 Use `ctx.sessionManager.getSessionId()`, not a file path. Events are in-process only, not a cross-process API. One consumer owns each slot at a time; a tracker and activity extension can register independently. Names/keys are display identity, not permission or process-control tokens.
@@ -51,7 +51,7 @@ type RegisterRequest = {
   version: 1;
   sessionId: string;
   owner: string;
-  slot: "activity" | "summary";
+  slot: "activity" | "plan" | "summary"; // "summary" is the legacy alias of "plan"
   result?:
     | { ok: true; registration: {
         publish(snapshot: unknown): { ok: true } | { ok: false; code: string };
@@ -63,7 +63,7 @@ type RegisterRequest = {
 
 No result means the host is absent/not ready. Registration errors include `invalid`, `wrong-session`, `occupied`, and `not-tui`. Publish errors include `invalid`, `stale`, and `disposed`.
 
-## Plan summary snapshot (`summary` slot)
+## Plan snapshot (`plan` slot; legacy name `summary`)
 
 ```ts
 {
@@ -74,8 +74,8 @@ No result means the host is absent/not ready. Registration errors include `inval
 ```
 
 The plan ID follows row-key bounds. Counts/revision are nonnegative safe integers;
-accepted cannot exceed total; review and blocked counts cannot individually exceed
-remaining tasks. Counts are supplied by the tracker, never inferred from agent
+accepted cannot exceed total; `inReview` and `blocked` are each bounded by
+`total - accepted`, but their sum is not checked (a task may be both). Counts are supplied by the tracker, never inferred from agent
 runs. Omit `plan` on a newer revision to clear the contribution without releasing
 ownership. Snapshot objects are cloned/frozen, and revision/disposal rules match
 the activity slot. Each slot has independent ownership and revision tracking.
@@ -109,7 +109,7 @@ Metrics are right-aligned only if the full activity text still fits with at leas
 
 Task IDs appear beside activity. In-progress tasks need no extra badge; blocked/review/accepted/cancelled tasks get a distinct badge, and plain mode retains textual status. A completed agent with an `in_review` task shows a green run check plus an accent review diamond. This optional data does not create a tracker or automatically accept a task.
 
-Owner uses the same character/length rules as row keys. Display text has ANSI/OSC, C0/C1, and bidi controls removed, with whitespace collapsed. The host clones and freezes validated snapshots. Invalid/stale publishes preserve the previous valid snapshot. Consumers must handle publish failure and send an explicit unknown/error observation when appropriate; an absent update does not prove a run ended.
+Owner uses the same character/length rules as row keys. Display text has ANSI/OSC sequences stripped; remaining C0/C1 and bidi control characters are replaced with spaces, then whitespace is collapsed and trimmed. The host clones and freezes validated snapshots. Invalid/stale publishes preserve the previous valid snapshot. Consumers must handle publish failure and send an explicit unknown/error observation when appropriate; an absent update does not prove a run ended.
 
 ## Presentation and responsibility boundaries
 
