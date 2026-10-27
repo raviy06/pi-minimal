@@ -184,8 +184,9 @@ export function installWorkingStatus(pi) {
         stop();
     });
     pi.on("session_shutdown", () => {
-        ctx = undefined;
+        // Clear the message while ctx is still known; dropping ctx first left it on screen.
         stop();
+        ctx = undefined;
     });
     return stop;
 }

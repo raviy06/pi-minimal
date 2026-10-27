@@ -26,11 +26,11 @@ function writeProject(cwd: string, contents: string) {
 	writeFileSync(join(dir, "pi-minimal.json"), contents)
 }
 
-test("defaults hideGauntletWidgets to true", (t) => {
+test("defaults hideGauntletWidgets to false", (t) => {
 	const { agentDir, cwd } = setup(t)
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: true, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
 	assert.equal(error.mock.callCount(), 0)
 })
 

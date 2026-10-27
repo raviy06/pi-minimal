@@ -132,7 +132,7 @@ function herdrProbes(execCalls: Call[]): Call[] {
 }
 
 test.describe("session chrome", { concurrency: 1 }, () => {
-	test("TUI session_start installs chrome and hides Gauntlet widgets by default", async (t) => {
+	test("TUI session_start installs chrome and leaves Gauntlet widgets alone by default", async (t) => {
 		const { agentDir, cwd } = setupDirs(t)
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
@@ -155,8 +155,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 				(call) => typeof call.args[1] === "function" || (call.args[1] !== undefined && call.args[1] !== null),
 			),
 		)
-		assert.ok(widgetCalls(uiCalls, "phase_tracker").some((call) => call.args[1] === undefined))
-		assert.ok(widgetCalls(uiCalls, "plan_tracker").some((call) => call.args[1] === undefined))
+		assert.equal(widgetCalls(uiCalls, "phase_tracker").length, 0)
+		assert.equal(widgetCalls(uiCalls, "plan_tracker").length, 0)
 		assert.equal(
 			allCalls.some((call) => call.method === "setHideThinkingBlock"),
 			false,
@@ -198,6 +198,26 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		assert.ok(firstFooter < firstReclaim, "footer before reclaim")
 		assert.ok(firstCwd < firstReclaim, "cwd before reclaim")
 		assert.equal(allCalls.some((call) => call.method === "registerTool"), false, "built-in tools are not re-registered")
+	})
+
+	test("clears Gauntlet widgets on every chrome reassertion when hiding is opted in, and never on a timer", async (t) => {
+		const { agentDir, cwd } = setupDirs(t)
+		writeFileSync(join(agentDir, "pi-minimal.json"), JSON.stringify({ hideGauntletWidgets: true }))
+		process.env[AGENT_DIR_ENV] = agentDir
+		delete process.env.HERDR_ENV
+		t.after(restoreEnv)
+
+		const { pi, uiCalls, emit } = createFake({ cwd, projectTrusted: true })
+		install(pi)
+		t.after(() => emit("session_shutdown"))
+		await emit("session_start")
+		await new Promise(resolve => setTimeout(resolve, 60))
+		const afterSettle = widgetCalls(uiCalls, "phase_tracker").length
+		assert.ok(afterSettle >= 1, "hidden at session_start")
+		await new Promise(resolve => setTimeout(resolve, 450))
+		assert.equal(widgetCalls(uiCalls, "phase_tracker").length, afterSettle, "no steal interval")
+		await emit("turn_end")
+		assert.equal(widgetCalls(uiCalls, "phase_tracker").length, afterSettle + 1, "hidden again on turn_end")
 	})
 
 	test("does not clear Gauntlet widgets when config disables hiding", async (t) => {
@@ -328,4 +348,26 @@ test("agent_end appends a turn summary entry in TUI mode", async (t) => {
 	assert.equal(data.tools, 2)
 	assert.equal(data.outcome, "completed")
 	assert.ok(registerCalls.some((c) => c.method === "registerEntryRenderer" && c.args[0] === "pi-minimal.turn"))
+})
+
+test("a second session_start disposes the first session's chrome and the stale one cannot draw", async (t) => {
+	const { agentDir, cwd } = setupDirs(t)
+	process.env[AGENT_DIR_ENV] = agentDir
+	delete process.env.HERDR_ENV
+	t.after(restoreEnv)
+	const { pi, emit, events, uiCalls } = createFake({ cwd })
+	install(pi)
+	t.after(() => emit("session_shutdown"))
+	await emit("session_start")
+	const first: RegisterRequest = { version: 1, owner: "a", sessionId: "S1", slot: "activity" }
+	events.emit(FOOTER_EVENTS.register, first)
+	assert.ok(first.result?.ok)
+	await emit("session_start")
+	assert.equal(first.result.registration.publish({ revision: 1, rows: [], omitted: 0, motion: "static", format: "icons" }).ok, false, "old registration is revoked")
+	const second: RegisterRequest = { version: 1, owner: "a", sessionId: "S1", slot: "activity" }
+	events.emit(FOOTER_EVENTS.register, second)
+	assert.ok(second.result?.ok, "the new session accepts a fresh registration")
+	const count = uiCalls.length
+	await new Promise(resolve => setTimeout(resolve, 70))
+	assert.ok(uiCalls.length >= count, "settle callbacks of the live session still run")
 })

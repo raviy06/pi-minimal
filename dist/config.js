@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 export const EDIT_DIFF_MODES = ["always", "never", "expanded"];
 const DEFAULTS = {
-    hideGauntletWidgets: true,
+    // Hiding another extension's widgets is opt-in.
+    hideGauntletWidgets: false,
     editDiff: "expanded",
 };
 export function loadPiMinimalConfig(options) {

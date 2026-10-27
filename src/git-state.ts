@@ -30,30 +30,45 @@ export function createGitState(pi: ExtensionAPI, cwd: () => string, minIntervalM
   let state: GitState | undefined
   let lastRun = 0
   let inFlight: Promise<void> | undefined
+  let disposed = false
   const listeners = new Set<() => void>()
 
+  const notify = () => {
+    for (const listener of listeners) {
+      try {
+        listener()
+      } catch {
+        // One listener's failure must not starve the others.
+      }
+    }
+  }
+
   const refresh = (force = false): Promise<void> => {
+    if (disposed) return Promise.resolve()
     const now = Date.now()
     if (inFlight) return inFlight
     if (!force && now - lastRun < minIntervalMs) return Promise.resolve()
     lastRun = now
+    // Read the directory once so both commands describe the same tree even if cwd changes mid-refresh.
+    const dir = cwd()
     inFlight = (async () => {
+      let next: GitState | undefined
       try {
-        const branchRun = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: cwd(), timeout: 2000 })
-        if (branchRun.code !== 0) {
-          state = undefined
-          return
+        const branchRun = await pi.exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: dir, timeout: 2000 })
+        if (branchRun.code === 0) {
+          const branch = parseBranch(branchRun.stdout)
+          const statusRun = await pi.exec("git", ["status", "--porcelain"], { cwd: dir, timeout: 3000 })
+          next = { branch, dirty: statusRun.code === 0 ? parsePorcelain(statusRun.stdout) : undefined }
         }
-        const branch = parseBranch(branchRun.stdout)
-        const statusRun = await pi.exec("git", ["status", "--porcelain"], { cwd: cwd(), timeout: 3000 })
-        const dirty = statusRun.code === 0 ? parsePorcelain(statusRun.stdout) : undefined
-        state = { branch, dirty }
       } catch {
-        state = undefined
+        next = undefined
       } finally {
         inFlight = undefined
-        for (const listener of listeners) listener()
       }
+      // A result that lands after dispose belongs to a session that no longer exists.
+      if (disposed) return
+      state = next
+      notify()
     })()
     return inFlight
   }
@@ -64,6 +79,10 @@ export function createGitState(pi: ExtensionAPI, cwd: () => string, minIntervalM
     onChange(listener: () => void) {
       listeners.add(listener)
       return () => listeners.delete(listener)
+    },
+    dispose() {
+      disposed = true
+      listeners.clear()
     },
   }
 }

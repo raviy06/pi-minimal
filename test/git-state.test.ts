@@ -50,3 +50,38 @@ test("createGitState clears state outside a repository", async () => {
 	await git.refresh(true)
 	assert.equal(git.get(), undefined)
 })
+
+test("createGitState reads cwd once per refresh, drops results after dispose, and isolates listener errors", async () => {
+	const cwds: string[] = []
+	let resolveStatus!: (value: unknown) => void
+	const pi = {
+		async exec(_cmd: string, args: string[], opts: { cwd: string }) {
+			cwds.push(opts.cwd)
+			if (args[0] === "rev-parse") return { stdout: "main\n", stderr: "", code: 0, killed: false }
+			return new Promise(resolve => { resolveStatus = resolve })
+		},
+	} as unknown as ExtensionAPI
+	let dir = "/a"
+	const git = createGitState(pi, () => dir)
+	let notified = 0
+	git.onChange(() => { throw new Error("boom") })
+	git.onChange(() => { notified++ })
+	const pending = git.refresh(true)
+	await new Promise(resolve => setImmediate(resolve))
+	dir = "/b"
+	resolveStatus({ stdout: " M x\n", stderr: "", code: 0, killed: false })
+	await pending
+	assert.deepEqual(cwds, ["/a", "/a"], "both commands use the directory read at refresh start")
+	assert.deepEqual(git.get(), { branch: "main", dirty: 1 })
+	assert.equal(notified, 1, "a throwing listener does not block the next one")
+
+	const late = git.refresh(true)
+	await new Promise(resolve => setImmediate(resolve))
+	git.dispose()
+	resolveStatus({ stdout: "", stderr: "", code: 0, killed: false })
+	await late
+	assert.deepEqual(git.get(), { branch: "main", dirty: 1 }, "a result landing after dispose is ignored")
+	assert.equal(notified, 1)
+	await git.refresh(true)
+	assert.deepEqual(cwds.length, 4, "no new commands after dispose")
+})
