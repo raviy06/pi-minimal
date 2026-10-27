@@ -10,6 +10,7 @@ import {
 	genericVerb,
 	installToolRenderers,
 	isToolKind,
+	setEditDiffMode,
 	stopLiveWatch,
 } from "../src/tools.js"
 
@@ -175,4 +176,68 @@ test("generic renderer draws one row, an error line on failure, and output on ex
 	context = make({ expanded: true })
 	const open = r.renderResult!({ content: [{ type: "text", text: "a\nb" }] } as never, { expanded: true, isPartial: false } as never, plainTheme, context as never)
 	assert.deepEqual(open.render(90).map((l) => l.trim()), ["│ a", "│ b"])
+})
+
+// pi's edit tool emits its own line-numbered form, not a unified diff: "+123 content", "-123 content", " 123 context", "..." between hunks.
+const EDIT_DIFF = " 1 context\n-2 const a = old(x)\n+2 const a = fresh(x)\n 3 context"
+const editResult = { content: [{ type: "text", text: "Successfully replaced 1 block(s)" }], details: { diff: EDIT_DIFF } }
+function editRows(expanded: boolean, result: unknown = editResult, isError = false): string[] {
+	const renderers = compactRenderers("edit")
+	const context = { args: { path: "a.ts" }, toolCallId: "e1", invalidate() {}, state: {}, isPartial: false, isError, durationMs: 100 } as never
+	const theme = {
+		fg: (c: string, s: string) => (c.startsWith("toolDiff") ? `<${c.slice(8).toLowerCase()}>${s}` : s),
+		inverse: (s: string) => `[${s}]`,
+	} as never
+	const block = renderers.renderResult!(result as never, { expanded, isPartial: false } as never, theme, context)
+	return block.render(80).map((line) => line.trimEnd())
+}
+
+test("editDiff=expanded (default) shows the diff only behind ctrl+o, in the theme's diff colours", (t) => {
+	t.after(() => setEditDiffMode("expanded"))
+	setEditDiffMode("expanded")
+	assert.deepEqual(editRows(false), [])
+	const rows = editRows(true)
+	assert.equal(rows.length, 4)
+	assert.match(rows[0]!, /│ <context> 1 context$/)
+	assert.match(rows[1]!, /│ <removed>-2 const a = /)
+	assert.match(rows[2]!, /│ <added>\+2 const a = /)
+	assert.ok(rows.every((row) => !row.includes("Successfully replaced")), "the diff replaces the result text")
+})
+
+test("a one-line replacement highlights only the changed tokens with inverse", (t) => {
+	t.after(() => setEditDiffMode("expanded"))
+	setEditDiffMode("expanded")
+	const [, removed, added] = editRows(true)
+	assert.match(removed!, /-2 const a = \[old\]\(x\)$/)
+	assert.match(added!, /\+2 const a = \[fresh\]\(x\)$/)
+	const multi = editRows(true, { content: [], details: { diff: "-1 a\n-2 b\n+1 c" } })
+	assert.ok(multi.every((row) => !row.includes("[")), "blocks that are not 1:1 are not token-highlighted")
+})
+
+test("editDiff=always shows the diff inline and editDiff=never only on request falls back to the result text", (t) => {
+	t.after(() => setEditDiffMode("expanded"))
+	setEditDiffMode("always")
+	assert.equal(editRows(false).length, 4)
+	assert.equal(editRows(true).length, 4)
+	setEditDiffMode("never")
+	assert.deepEqual(editRows(false), [])
+	assert.match(editRows(true)[0]!, /│ Successfully replaced 1 block\(s\)$/)
+})
+
+test("editDiff=always truncates a long inline diff and leaves the full diff to ctrl+o", (t) => {
+	t.after(() => setEditDiffMode("expanded"))
+	setEditDiffMode("always")
+	const long = { content: [{ type: "text", text: "ok" }], details: { diff: Array.from({ length: 60 }, (_, i) => `+${i + 1} line ${i}`).join("\n") } }
+	const inline = editRows(false, long)
+	assert.equal(inline.length, 41)
+	assert.match(inline[40]!, /… 20 more lines \(ctrl\+o\)$/)
+	assert.equal(editRows(true, long).length, 60)
+})
+
+test("edit failures and results without a diff never render a diff block", (t) => {
+	t.after(() => setEditDiffMode("expanded"))
+	setEditDiffMode("always")
+	assert.deepEqual(editRows(false, { content: [{ type: "text", text: "edited" }] }), [])
+	const failed = editRows(false, { content: [{ type: "text", text: "oldText not found" }] }, true)
+	assert.ok(failed.every((row) => !row.includes("<removed>")))
 })
