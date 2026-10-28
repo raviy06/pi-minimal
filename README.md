@@ -12,7 +12,8 @@ No other Pi extension is required. Pi supplies the peer packages used by this ex
 Optional integrations:
 
 - `pi-gauntlet`: supplies the phase and task data shown in the footer. Set `hideGauntletWidgets: true` to also hide its own widgets, since the footer already shows that data.
-- Herdr: sibling status appears only when Pi is running inside Herdr.
+- Herdr: sibling status (other agents in the workspace, `working` / `blocked` / `idle`) appears when Pi runs inside a Herdr pane (`HERDR_ENV=1`). Herdr's own pi integration reports each pane's state.
+- Rex: the same sibling status appears when Pi runs inside a [Rex](https://www.superlogical.com/rex) session (`REX_SESSION` + `REX_BLOCK`). Rex learns a pane's state from the [Program Status Protocol (OSC 7501)](https://www.superlogical.com/rex/docs/build/program-status), so each pi needs an extension that reports it (e.g. a `rex-agent-state.ts` that writes `ESC ] 7501 ; state=working:app=pi ESC \\` on `agent_start`); other programs that speak the protocol show up too. Herdr wins when both are present.
 
 ## Installation
 
@@ -33,7 +34,7 @@ Do not load this package beside the live `grok-chrome` extension. Disable or rem
 - **Tool rows** – every built-in tool call (`bash`, `read`, `edit`, `write`, `grep`, `find`, `ls`) renders as one line: status glyph (`◐` running, `✓` ok, `✗` failed), verb, item, and a right-aligned outcome (`34 lines · 1.0s`, `exit 1`, `+3 −1`, `4 matches`). Failed rows show the first line of output underneath; `ctrl+o` expands full output in a `│`-ruled block. `codemode` renders the same way, as a `code` row with one child row per nested tool call; `ctrl+o` shows the script and its output. Tools without a renderer of their own (most MCP tools) get the same one-line row; tools that draw themselves keep their look. Bash rows drop a leading `cd <session cwd> &&` and shorten other `cd` prefixes to the directory name.
 - **Turn rule** – after each agent run a dim `── 15:51 · 12s · 4 tools ──` separator is appended (stored as a custom entry; never sent to the model).
 - **Thinking gutter** – every line of a thinking paragraph, wrapped lines included, starts with `┊`, so thinking reads as a column beside prose.
-- **Status line** – one line above the editor: model · thinking level · context meter (amber at 70 %, red at 90 %) · cwd · `⎇ branch ±dirty` · Herdr siblings.
+- **Status line** – one line above the editor: model · thinking level · context meter (amber at 70 %, red at 90 %) · cwd · `⎇ branch ±dirty` · siblings (other agents in the same Herdr workspace or Rex session, with their state).
 - **Footer** – key hints appear only when the agent is idle and the editor is empty; `/compact` is suggested under context pressure.
 - **Code blocks** – fenced code renders as a closed box with the language as its title, keeping syntax highlighting, instead of literal ``` lines; long lines wrap inside the box.
 - **Alignment** – chrome follows pi's `outputPad` setting. Pi's editor uses the separate `editorPaddingX` setting (default `0`); set `"editorPaddingX": 1` for a flush left edge with the transcript.

@@ -1,3 +1,9 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
+import { createListeners } from "./listeners.js"
+import type { Sibling, SiblingSource } from "./siblings.js"
+
+export type { Sibling } from "./siblings.js"
+
 export type HerdrAgent = {
   agent: string
   agent_status: string
@@ -40,11 +46,6 @@ export function parseTabList(stdout: string): HerdrTab[] {
   }))
 }
 
-export type Sibling = {
-  name: string
-  status: string
-}
-
 export function listSiblings(
   agents: HerdrAgent[],
   tabs: HerdrTab[],
@@ -63,4 +64,76 @@ export function listSiblings(
   }
   if (parts.length === 0) return undefined
   return parts
+}
+
+const HERDR_FAST_MS = 2000
+const HERDR_SLOW_MS = 10000
+const HERDR_EXEC_TIMEOUT_MS = 3000
+
+/**
+ * Polls `herdr agent list` + `herdr tab list`: every 2 s while siblings are visible, every 10 s
+ * otherwise or after a failure. Probes once immediately.
+ */
+export function createHerdrSiblings(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): SiblingSource {
+  let alive = true
+  let siblings: Sibling[] | undefined
+  let timer: ReturnType<typeof setInterval> | undefined
+  let period = 0
+  let inFlight: AbortController | undefined
+  const listeners = createListeners()
+
+  const set = (next: Sibling[] | undefined) => {
+    const changed = JSON.stringify(next) !== JSON.stringify(siblings)
+    siblings = next
+    if (changed) listeners.notify()
+  }
+
+  const schedule = (periodMs: number) => {
+    if (!alive || period === periodMs) return
+    if (timer) clearInterval(timer)
+    period = periodMs
+    timer = setInterval(() => { void probe() }, periodMs)
+  }
+
+  const probe = async () => {
+    if (!alive || inFlight) return
+    const ac = new AbortController()
+    inFlight = ac
+    try {
+      const agentRun = await pi.exec("herdr", ["agent", "list"], { timeout: HERDR_EXEC_TIMEOUT_MS, signal: ac.signal })
+      if (!alive) return
+      const tabRun = await pi.exec("herdr", ["tab", "list"], { timeout: HERDR_EXEC_TIMEOUT_MS, signal: ac.signal })
+      if (!alive) return
+      if (agentRun.code !== 0 || tabRun.code !== 0 || agentRun.killed || tabRun.killed) {
+        set(undefined)
+        schedule(HERDR_SLOW_MS)
+        return
+      }
+      set(listSiblings(parseAgentList(agentRun.stdout), parseTabList(tabRun.stdout), env.HERDR_PANE_ID, env.HERDR_TAB_ID))
+      schedule(siblings ? HERDR_FAST_MS : HERDR_SLOW_MS)
+    } catch {
+      if (!alive) return
+      set(undefined)
+      schedule(HERDR_SLOW_MS)
+    } finally {
+      if (inFlight === ac) inFlight = undefined
+    }
+  }
+
+  void probe()
+
+  return {
+    get: () => siblings,
+    onChange: listeners.add,
+    dispose() {
+      if (!alive) return
+      alive = false
+      if (timer) clearInterval(timer)
+      timer = undefined
+      inFlight?.abort()
+      inFlight = undefined
+      siblings = undefined
+      listeners.clear()
+    },
+  }
 }

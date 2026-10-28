@@ -17,11 +17,17 @@ type SessionMode = "tui" | "rpc" | "json" | "print"
 
 const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR"
 const originalHerdrEnv = process.env.HERDR_ENV
+const originalRexSession = process.env.REX_SESSION
+const originalRexBlock = process.env.REX_BLOCK
 const originalAgentDir = process.env[AGENT_DIR_ENV]
 
 function restoreEnv() {
 	if (originalHerdrEnv === undefined) delete process.env.HERDR_ENV
 	else process.env.HERDR_ENV = originalHerdrEnv
+	if (originalRexSession === undefined) delete process.env.REX_SESSION
+	else process.env.REX_SESSION = originalRexSession
+	if (originalRexBlock === undefined) delete process.env.REX_BLOCK
+	else process.env.REX_BLOCK = originalRexBlock
 	if (originalAgentDir === undefined) delete process.env[AGENT_DIR_ENV]
 	else process.env[AGENT_DIR_ENV] = originalAgentDir
 }
@@ -136,6 +142,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		const { agentDir, cwd } = setupDirs(t)
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
 		t.after(restoreEnv)
 
 		const hideThinking = t.mock.method(SettingsManager.prototype, "setHideThinkingBlock")
@@ -172,6 +180,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		const { agentDir, cwd } = setupDirs(t)
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
 		t.after(restoreEnv)
 
 		const { pi, allCalls, emit } = createFake({ cwd })
@@ -205,6 +215,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		writeFileSync(join(agentDir, "pi-minimal.json"), JSON.stringify({ hideGauntletWidgets: true }))
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
 		t.after(restoreEnv)
 
 		const { pi, uiCalls, emit } = createFake({ cwd, projectTrusted: true })
@@ -225,6 +237,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		writeFileSync(join(agentDir, "pi-minimal.json"), JSON.stringify({ hideGauntletWidgets: false }))
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
 		t.after(restoreEnv)
 
 		const { pi, uiCalls, emit } = createFake({ cwd, projectTrusted: true })
@@ -243,6 +257,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		const { agentDir, cwd } = setupDirs(t)
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
 		t.after(restoreEnv)
 
 		const { pi, execCalls, emit } = createFake({ cwd })
@@ -261,6 +277,8 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		const { agentDir, cwd } = setupDirs(t)
 		process.env[AGENT_DIR_ENV] = agentDir
 		process.env.HERDR_ENV = "1"
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
 		t.after(restoreEnv)
 
 		const { pi, execCalls, emit } = createFake({ cwd })
@@ -269,12 +287,53 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		await emit("session_start")
 
 		assert.equal(herdrProbes(execCalls).length, 1)
+		assert.equal(execCalls.filter((call) => call.args[0] === "rex").length, 0)
+	})
+
+	test("inside Rex (REX_SESSION + REX_BLOCK) it reads the Rex session instead of herdr", async (t) => {
+		const { agentDir, cwd } = setupDirs(t)
+		process.env[AGENT_DIR_ENV] = agentDir
+		delete process.env.HERDR_ENV
+		process.env.REX_SESSION = "session:test"
+		process.env.REX_BLOCK = "block:self"
+		t.after(restoreEnv)
+
+		const { pi, execCalls, emit } = createFake({ cwd })
+		install(pi)
+		t.after(() => emit("session_shutdown"))
+		await emit("session_start")
+		await new Promise((resolve) => setTimeout(resolve, 20))
+
+		assert.equal(herdrProbes(execCalls).length, 0)
+		assert.deepEqual(
+			execCalls.filter((call) => call.args[0] === "rex").map((call) => call.args[1]),
+			[["window", "ls", "-s", "session:test", "--json"]],
+		)
+	})
+
+	test("Herdr wins when both Herdr and Rex are present", async (t) => {
+		const { agentDir, cwd } = setupDirs(t)
+		process.env[AGENT_DIR_ENV] = agentDir
+		process.env.HERDR_ENV = "1"
+		process.env.REX_SESSION = "session:test"
+		process.env.REX_BLOCK = "block:self"
+		t.after(restoreEnv)
+
+		const { pi, execCalls, emit } = createFake({ cwd })
+		install(pi)
+		t.after(() => emit("session_shutdown"))
+		await emit("session_start")
+
+		assert.equal(herdrProbes(execCalls).length, 1)
+		assert.equal(execCalls.filter((call) => call.args[0] === "rex").length, 0)
 	})
 
 	test("non-TUI modes install no TUI components", async (t) => {
 		const { agentDir, cwd } = setupDirs(t)
 		process.env[AGENT_DIR_ENV] = agentDir
 		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
 		t.after(restoreEnv)
 
 		const { pi, uiCalls, execCalls, emit } = createFake({ cwd, mode: "print" })
@@ -307,6 +366,8 @@ test("footer registration survives chrome reinstalls and becomes inert on shutdo
 	const { agentDir, cwd } = setupDirs(t)
 	process.env[AGENT_DIR_ENV] = agentDir
 	delete process.env.HERDR_ENV
+	delete process.env.REX_SESSION
+	delete process.env.REX_BLOCK
 	t.after(restoreEnv)
 	const { pi, emit, events, uiCalls } = createFake({ cwd })
 	install(pi)
@@ -332,6 +393,8 @@ test("agent_end appends a turn summary entry in TUI mode", async (t) => {
 	const { agentDir, cwd } = setupDirs(t)
 	process.env[AGENT_DIR_ENV] = agentDir
 	delete process.env.HERDR_ENV
+	delete process.env.REX_SESSION
+	delete process.env.REX_BLOCK
 	t.after(restoreEnv)
 	const { pi, registerCalls, emit } = createFake({ cwd })
 	install(pi)
@@ -354,6 +417,8 @@ test("a second session_start disposes the first session's chrome and the stale o
 	const { agentDir, cwd } = setupDirs(t)
 	process.env[AGENT_DIR_ENV] = agentDir
 	delete process.env.HERDR_ENV
+	delete process.env.REX_SESSION
+	delete process.env.REX_BLOCK
 	t.after(restoreEnv)
 	const { pi, emit, events, uiCalls } = createFake({ cwd })
 	install(pi)
