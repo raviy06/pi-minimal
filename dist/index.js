@@ -1,6 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { showBackgroundOverlay } from "./background-overlay.js";
 import { installCodeBox } from "./code-box.js";
+import { isPrCreateCommand } from "./prs.js";
 import { parsePrFilter, prsToolResult, runPrsCommand } from "./prs-command.js";
 import { createSession } from "./session.js";
 import { installToolRenderers, stopLiveWatch } from "./tools.js";
@@ -66,8 +67,15 @@ export default function piMinimalExtension(pi) {
         active = createSession(pi, ctx, { busy: () => busy });
         ensureShortcut();
     });
+    // Commands that create a PR: remember the URL they print so the chips follow the session
+    // even when cwd is another repo (worktrees) or no repo at all.
+    const prCreateCalls = new Map();
     pi.on("tool_execution_start", (event) => {
         active?.background?.toolStart(event.toolCallId, event.toolName);
+        const command = event.args?.command;
+        if ((event.toolName === "bash" || event.toolName === "powershell") && typeof command === "string" && isPrCreateCommand(command)) {
+            prCreateCalls.set(event.toolCallId, true);
+        }
     });
     pi.on("agent_start", () => {
         busy = true;
@@ -82,6 +90,10 @@ export default function piMinimalExtension(pi) {
     });
     pi.on("tool_execution_end", (event) => {
         active?.background?.toolEnd(event.toolCallId, event.toolName);
+        if (prCreateCalls.delete(event.toolCallId) && !event.isError) {
+            const content = event.result?.content ?? [];
+            active?.notePrUrls(content.map((part) => (part.type === "text" && typeof part.text === "string" ? part.text : "")).join("\n"));
+        }
         active?.pin("tool_execution_end");
         active?.refreshGit();
     });

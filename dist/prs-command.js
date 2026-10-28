@@ -20,22 +20,23 @@ export async function runPrsCommand(args, ctx, pi, source) {
     }
     await source.refresh(true);
     const snap = source.get();
-    if (!snap.repo) {
+    if (!snap.repo && snap.prs.length === 0) {
         ctx.ui.notify(snap.error ? `No GitHub repo here: ${snap.error}` : "No GitHub repo here.", "warning");
         return;
     }
     const filter = parsePrFilter(args);
     const prs = filterPrs(snap.prs, filter);
-    const title = `${snap.repo.nameWithOwner}: ${prs.length} open PR${prs.length === 1 ? "" : "s"}${filter === "all" ? "" : ` (${filter})`}${snap.error ? ` · stale: ${snap.error}` : ""}`;
+    const title = `${snap.repo?.nameWithOwner ?? "this session"}: ${prs.length} open PR${prs.length === 1 ? "" : "s"}${filter === "all" ? "" : ` (${filter})`}${snap.error ? ` · stale: ${snap.error}` : ""}`;
     if (prs.length === 0) {
         ctx.ui.notify(title, "info");
         return;
     }
     if (ctx.mode !== "tui") {
-        ctx.ui.notify(`${title}\n${prs.map((pr) => `${describePr(pr)}\n  ${pr.url}`).join("\n")}`, "info");
+        ctx.ui.notify(`${title}\n${prs.map((pr) => `${describePr(pr, snap.repo ? `${snap.repo.host}/${snap.repo.nameWithOwner}` : undefined)}\n  ${pr.url}`).join("\n")}`, "info");
         return;
     }
-    const labels = prs.map(describePr);
+    const cwdRepo = snap.repo ? `${snap.repo.host}/${snap.repo.nameWithOwner}` : undefined;
+    const labels = prs.map((pr) => describePr(pr, cwdRepo));
     const chosen = await ctx.ui.select(`${title}\n${PR_LEGEND}`, labels);
     if (chosen === undefined)
         return;

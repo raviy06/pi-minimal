@@ -21,8 +21,10 @@ Herdr, background processes left by bash calls, and the repo's open PRs as click
   authored or were asked to review, each an OSC 8 hyperlink to the PR, coloured accent (mine), dim
   (my draft), amber (needs my review) or red (failing CI / changes requested). `/prs [mine|review|all]`
   lists them with open / paste URL / checkout actions; `list_open_prs` tool for the model. Uses the
-  `gh` CLI; works on GitHub.com and GitHub Enterprise. New peer dependency `@earendil-works/pi-ai`
-  (supplied by pi) for the tool schema.
+  `gh` CLI; works on GitHub.com and GitHub Enterprise. PRs created by the session (`gh pr create`,
+  `gt submit`) are remembered as session entries and shown from any directory, as `repo#n` when
+  outside the cwd repo, until merged. New peer dependency `@earendil-works/pi-ai` (supplied by pi)
+  for the tool schema.
 - Background processes: `⚙ N bg` after the key hints in the footer while processes left behind by `bash` tool
   calls are running; `ctrl+b` / `/bg` opens an overlay listing each one with running/ended state and
   duration, `k` kills the selection, `K` its process group. Attribution diffs `ps` around each bash

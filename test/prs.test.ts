@@ -7,11 +7,16 @@ import {
 	ciFailing,
 	createPrSource,
 	describePr,
+	findPrUrls,
+	isPrCreateCommand,
 	parsePrList,
+	parsePrView,
 	parseRepoView,
 	PR_LIST_FIELDS,
+	prChipLabel,
 	prColor,
 	prSegment,
+	prUrlRepo,
 	type PrRepo,
 	type PullRequest,
 } from "../src/prs.js"
@@ -82,7 +87,7 @@ test.describe("prs parsing", () => {
 })
 
 test.describe("prs display", () => {
-	const theme = { fg: (c: string, t: string) => `<${c}>${t}</${c}>` }
+	const theme = { fg: (c: string, t: string) => `[${c}]${t}[/${c}]` }
 	const prs = parsePrList(ghList, repo, "raviy06")
 	const by = (n: number) => prs.find((pr) => pr.number === n) as PullRequest
 
@@ -95,19 +100,20 @@ test.describe("prs display", () => {
 	})
 
 	test("prSegment links each chip, colours it, and collapses the overflow", () => {
-		const segment = prSegment(prs, theme, 2) as string
+		const segment = prSegment(prs, theme, 2, "github.com/raviy06/pi-minimal") as string
 		const esc = "\u001b"
-		assert.ok(segment.includes(`<error>${esc}]8;;https://github.com/raviy06/pi-minimal/pull/20${esc}\\#20${esc}]8;;${esc}\\</error>`), "chip #20 is a red OSC 8 link")
-		assert.match(segment, /<accent>.*#23.*<\/accent>/)
-		assert.match(segment, /<dim>\+2<\/dim>$/)
-		assert.equal(stripTerminalSequences(segment).replace(/[<>]/g, ""), "#20 #23 +2")
+		assert.ok(segment.includes(`[error]${esc}]8;;https://github.com/raviy06/pi-minimal/pull/20${esc}\\#20${esc}]8;;${esc}\\[/error]`), "chip #20 is a red OSC 8 link")
+		assert.match(segment, /\[accent\].*#23.*\[\/accent\]/)
+		assert.match(segment, /\[dim\]\+2\[\/dim\]$/)
+		assert.equal(stripTerminalSequences(segment.replace(/\[\/?[a-z]+\]/g, "")), "#20 #23 +2")
 		assert.equal(prSegment([], theme), undefined)
+		assert.equal(stripTerminalSequences((prSegment(prs.slice(0, 1), theme, 4) as string).replace(/\[\/?[a-z]+\]/g, "")), "pi-minimal#20", "outside any repo the chip names its repo")
 	})
 
 	test("describePr summarises kind and trouble", () => {
-		assert.equal(describePr(by(20)), "#20  fix: review me  · review requested · CI failing · @someone")
-		assert.equal(describePr(by(22)), "#22  feat: Rex siblings  · draft")
-		assert.equal(describePr(by(21)), "#21  docs: glossary  · mine · changes requested")
+		assert.equal(describePr(by(20), "github.com/raviy06/pi-minimal"), "#20  fix: review me  · review requested · CI failing · @someone")
+		assert.equal(describePr(by(22), "github.com/raviy06/pi-minimal"), "#22  feat: Rex siblings  · draft")
+		assert.equal(describePr(by(21), "github.com/raviy06/pi-minimal"), "#21  docs: glossary  · mine · changes requested")
 	})
 
 	test("filter parsing and filtering", () => {
@@ -123,12 +129,20 @@ test.describe("createPrSource", () => {
 	const tick = () => new Promise((resolve) => setImmediate(resolve))
 	const settle = async () => { for (let i = 0; i < 12; i++) await tick() }
 
-	function fakePi(options: { repoOk?: boolean; login?: string } = {}) {
+	const sessionPrUrl = "https://git.musta.ch/airbnb/ht-mainapp/pull/22741"
+	const ghView = (state = "OPEN") => JSON.stringify({
+		number: 22741, title: "Make the Rails session cookie host-only", url: sessionPrUrl, isDraft: false, state,
+		author: { login: "ravi-yadav" }, reviewRequests: [], reviewDecision: "REVIEW_REQUIRED",
+		statusCheckRollup: [{ state: "FAILURE" }], updatedAt: "2026-10-28T12:00:00Z",
+	})
+
+	function fakePi(options: { repoOk?: boolean; login?: string; viewState?: string } = {}) {
 		const execCalls: string[][] = []
 		const pi = {
 			async exec(command: string, args: string[]) {
 				execCalls.push([command, ...args])
 				if (command !== "gh") return { stdout: "", stderr: "", code: 1, killed: false }
+				if (args[0] === "pr" && args[1] === "view") return { stdout: ghView(options.viewState), stderr: "", code: 0, killed: false }
 				if (args[0] === "repo") {
 					return options.repoOk === false
 						? { stdout: "", stderr: "none of the git remotes configured for this repository point to a known GitHub host", code: 1, killed: false }
@@ -187,5 +201,72 @@ test.describe("createPrSource", () => {
 		assert.equal(source.get().repo, undefined)
 		assert.deepEqual(source.get().prs, [])
 		assert.match(source.get().error ?? "", /known GitHub host/)
+	})
+
+	test("a PR created in this session shows up even outside any repo, is persisted via sessionPrs(), and is forgotten once merged", async (t) => {
+		const { pi, execCalls } = fakePi({ repoOk: false })
+		const source = createPrSource({ pi, cwd: () => "/elsewhere", pollMs: 10 * 60_000 })
+		t.after(() => source.dispose())
+		await settle()
+		assert.deepEqual(source.get().prs, [])
+
+		source.addSessionPr("Creating pull request…\nhttps://git.musta.ch/airbnb/ht-mainapp/pull/22741\n")
+		await settle()
+		assert.deepEqual(source.sessionPrs(), [sessionPrUrl])
+		assert.ok(execCalls.some((c) => c[1] === "pr" && c[2] === "view" && c[3] === sessionPrUrl))
+		assert.deepEqual(source.get().prs.map((pr) => [pr.number, pr.kind, pr.repo, pr.ciFailing]), [[22741, "mine", "git.musta.ch/airbnb/ht-mainapp", true]])
+		assert.equal(source.get().repo, undefined, "still not a repo here")
+
+		// Same URL again is a no-op.
+		const calls = execCalls.length
+		source.addSessionPr(sessionPrUrl)
+		await settle()
+		assert.equal(execCalls.length, calls)
+
+		// A restored session starts with the URL and fetches it on the first refresh.
+		const restored = createPrSource({ pi, cwd: () => "/elsewhere", pollMs: 10 * 60_000, sessionPrs: [sessionPrUrl] })
+		t.after(() => restored.dispose())
+		await settle()
+		assert.deepEqual(restored.get().prs.map((pr) => pr.number), [22741])
+	})
+
+	test("a session PR in the cwd repo is not listed twice; a merged one disappears", async (t) => {
+		const merged = fakePi({ viewState: "MERGED" })
+		const source = createPrSource({ pi: merged.pi, cwd: () => "/repo", pollMs: 10 * 60_000, sessionPrs: [sessionPrUrl, "https://github.com/raviy06/pi-minimal/pull/23"] })
+		t.after(() => source.dispose())
+		await settle()
+		// #23 comes from the list (so no `pr view` for it); the GHE one was merged, so it is dropped and forgotten.
+		assert.equal(merged.execCalls.filter((c) => c[1] === "pr" && c[2] === "view").length, 1)
+		assert.deepEqual(source.get().prs.map((pr) => pr.number), [20, 23, 22, 21])
+		assert.deepEqual(source.sessionPrs(), ["https://github.com/raviy06/pi-minimal/pull/23"])
+	})
+})
+
+test.describe("session PRs", () => {
+	test("PR URLs are found in gh pr create output and mapped to their repo", () => {
+		const out = "Creating pull request for ry-prs-status into main in raviy06/pi-minimal\n\nhttps://github.com/raviy06/pi-minimal/pull/24\n"
+		assert.deepEqual(findPrUrls(out), ["https://github.com/raviy06/pi-minimal/pull/24"])
+		assert.deepEqual(findPrUrls("see https://git.musta.ch/airbnb/ht-mainapp/pull/22741 and https://git.musta.ch/airbnb/ht-mainapp/pull/22741"), ["https://git.musta.ch/airbnb/ht-mainapp/pull/22741"])
+		assert.deepEqual(findPrUrls("https://github.com/raviy06/pi-minimal/issues/5"), [])
+		assert.equal(prUrlRepo("https://git.musta.ch/airbnb/ht-mainapp/pull/22741"), "git.musta.ch/airbnb/ht-mainapp")
+		assert.equal(isPrCreateCommand("cd x && gh pr create --fill"), true)
+		assert.equal(isPrCreateCommand("gt submit --stack"), true)
+		assert.equal(isPrCreateCommand("gh pr view 24"), false)
+	})
+
+	test("parsePrView keeps open PRs as mine and drops merged/closed ones", () => {
+		const url = "https://git.musta.ch/airbnb/ht-mainapp/pull/22741"
+		const raw = { number: 22741, title: "t", url, isDraft: false, author: { login: "x" }, statusCheckRollup: [], state: "OPEN" }
+		assert.equal(parsePrView(JSON.stringify(raw), url)?.kind, "mine")
+		assert.equal(parsePrView(JSON.stringify(raw), url)?.repo, "git.musta.ch/airbnb/ht-mainapp")
+		assert.equal(parsePrView(JSON.stringify({ ...raw, state: "MERGED" }), url), undefined)
+	})
+
+	test("chips outside the cwd repo carry the repo name", () => {
+		const pr = parsePrList(ghList, repo, "raviy06")[0] as PullRequest
+		assert.equal(prChipLabel(pr, "github.com/raviy06/pi-minimal"), "#20")
+		assert.equal(prChipLabel(pr, "git.musta.ch/airbnb/ht-mainapp"), "pi-minimal#20")
+		assert.equal(prChipLabel(pr, undefined), "pi-minimal#20", "no cwd repo: name the repo")
+		assert.match(describePr(pr, "git.musta.ch/airbnb/other"), /^pi-minimal#20 {2}/)
 	})
 })
