@@ -155,7 +155,9 @@ test.describe("createPrSource", () => {
 			["gh", "api", "--hostname"],
 			["gh", "pr", "list"],
 		])
-		assert.ok(execCalls[1]?.includes("github.com"))
+		const hostnameIdx = execCalls[1]?.indexOf("--hostname") ?? -1
+		assert.ok(hostnameIdx >= 0)
+		assert.equal(execCalls[1]?.[hostnameIdx + 1], "github.com")
 		assert.ok(execCalls[2]?.includes("github.com/raviy06/pi-minimal") && execCalls[2]?.includes(PR_LIST_FIELDS))
 		assert.equal(changes, 1)
 		assert.deepEqual(source.get().prs.map((pr) => pr.number), [20, 23, 22, 21])
