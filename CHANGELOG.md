@@ -12,7 +12,13 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ### Added
 
-- Background processes: `⚙ N bg` on the status line while processes left behind by `bash` tool
+- Open PRs: the footer shows `#1675 #1670 +3` chips, right-aligned on the hints line below the editor, for open PRs in the repo of cwd that you
+  authored or were asked to review, each an OSC 8 hyperlink to the PR, coloured accent (mine), dim
+  (my draft), amber (needs my review) or red (failing CI / changes requested). `/prs [mine|review|all]`
+  lists them with open / paste URL / checkout actions; `list_open_prs` tool for the model. Uses the
+  `gh` CLI; works on GitHub.com and GitHub Enterprise. New peer dependency `@earendil-works/pi-ai`
+  (supplied by pi) for the tool schema.
+- Background processes: `⚙ N bg` after the key hints in the footer while processes left behind by `bash` tool
   calls are running; `ctrl+b` / `/bg` opens an overlay listing each one with running/ended state and
   duration, `k` kills the selection, `K` its process group. Attribution diffs `ps` around each bash
   call using pi's detached process groups, so no command is rewritten. New `backgroundShortcut`

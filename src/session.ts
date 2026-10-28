@@ -9,6 +9,7 @@ import { createGitState } from "./git-state.js"
 import { installHeader } from "./header.js"
 import { createBackgroundTracker, type BackgroundTracker } from "./background.js"
 import { backgroundSegment } from "./background-overlay.js"
+import { createPrSource, prSegment, type PrSource } from "./prs.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
 import type { RexSpawn } from "./rex.js"
 import { createSiblingSource, type SiblingSource } from "./siblings.js"
@@ -28,6 +29,8 @@ export type Session = {
   /** Background processes left behind by bash tool calls; undefined outside TUI mode. */
   readonly background?: BackgroundTracker
   readonly backgroundShortcut?: string | null
+  /** Open PRs for the repo in cwd; undefined outside TUI mode. */
+  readonly prs?: PrSource
   /** Re-asserts chrome after an event that may have let another extension draw over it. */
   pin(reason: ReclaimReason): void
   refreshGit(force?: boolean): void
@@ -64,6 +67,7 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
   let stopFooter = () => {}
   let siblings: SiblingSource | undefined
   const background = createBackgroundTracker({ pi })
+  const prs = createPrSource({ pi, cwd: () => ctx.cwd })
   const settleTimers: ReturnType<typeof setTimeout>[] = []
 
   const contextPct = (): number | undefined => {
@@ -79,6 +83,10 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
       busy: deps.busy,
       editorText: () => (typeof ctx.ui.getEditorText === "function" ? ctx.ui.getEditorText() : ""),
       contextPct,
+      prs: (theme) => prSegment(prs.get().prs, theme),
+      onPrsChange: prs.onChange,
+      background: () => backgroundSegment(background.get()),
+      onBackgroundChange: background.onChange,
     }, contributions)
   }
 
@@ -86,12 +94,10 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
     installCwd(ctx, {
       gitState: gitState.get,
       siblings: () => siblings?.get(),
-      background: () => backgroundSegment(background.get()),
       onChange(listener) {
         const offGit = gitState.onChange(listener)
         const offSiblings = siblings?.onChange(listener) ?? (() => {})
-        const offBackground = background.onChange(listener)
-        return () => { offGit(); offSiblings(); offBackground() }
+        return () => { offGit(); offSiblings() }
       },
     })
   }
@@ -125,13 +131,15 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
     id,
     background,
     backgroundShortcut: config.backgroundShortcut,
+    prs,
     pin,
-    refreshGit(force) { if (alive) void gitState.refresh(force) },
+    refreshGit(force) { if (alive) { void gitState.refresh(force); void prs.refresh() } },
     dispose() {
       if (!alive) return
       alive = false
       for (const timer of settleTimers.splice(0)) clearTimeout(timer)
       background.dispose()
+      prs.dispose()
       siblings?.dispose()
       siblings = undefined
       gitState.dispose()

@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
 import { keyHint } from "@earendil-works/pi-coding-agent"
 import { truncateToWidth } from "@earendil-works/pi-tui"
 import * as chrome from "./chrome.js"
+import { splitRow } from "./cwd.js"
 import { formatTrackerLines } from "./tracker.js"
 import type { FooterContributions } from "./footer-contributions.js"
 import { activityNeedsAnimation, renderFooterActivity } from "./footer-activity.js"
@@ -19,6 +20,14 @@ export type FooterSources = {
   editorText: () => string
   /** Context usage percentage, when known. */
   contextPct: () => number | undefined
+  /** Open PR chips (`#1675 #1670 +3`), themed and linked, shown right-aligned on the hints line. */
+  prs?: (theme: { fg(color: string, text: string): string }) => string | undefined
+  /** Fires when the PR chips may have changed. */
+  onPrsChange?: (listener: () => void) => () => void
+  /** `⚙ 2 bg` while bash-tool processes run in the background; shown after the hints. */
+  background?: () => string | undefined
+  /** Fires when the background count may have changed. */
+  onBackgroundChange?: (listener: () => void) => () => void
 }
 
 /**
@@ -52,11 +61,15 @@ export function installFooter(ctx: ExtensionContext, sources: FooterSources, con
     const update = () => { syncAnimation(); redraw() }
     const unsub = footerData.onBranchChange(redraw)
     const unsubscribeActivity = contributions?.subscribe(update)
+    const unsubscribePrs = sources.onPrsChange?.(redraw)
+    const unsubscribeBackground = sources.onBackgroundChange?.(redraw)
     stopMount = () => {
       if (disposed) return
       disposed = true
       unsub()
       unsubscribeActivity?.()
+      unsubscribePrs?.()
+      unsubscribeBackground?.()
       live.stop()
     }
     update()
@@ -71,9 +84,16 @@ export function installFooter(ctx: ExtensionContext, sources: FooterSources, con
           keyHint("app.thinking.cycle", "thinking"),
           keyHint("app.tools.expand", "expand tools"),
         ].filter(Boolean))
-        if (hints.length > 0) {
-          const line = theme.fg("dim", hints.join("  ·  "))
-          out.push(`${" ".repeat(margin())}${truncateToWidth(line, inner, "")}`)
+        // Left: hints (idle only) then the background count (always). Right: PR chips whenever
+        // there are any. The chips are dropped before the left side when the line is too narrow.
+        const background = sources.background?.()
+        const left = [hints.length > 0 ? theme.fg("dim", hints.join("  ·  ")) : "", background ? theme.fg("warning", background) : ""]
+          .filter(Boolean)
+          .join(theme.fg("dim", "  ·  "))
+        const prs = sources.prs?.(theme)
+        if (left || prs) {
+          const line = prs ? splitRow(left, [prs], inner) : truncateToWidth(left, inner, "")
+          out.push(`${" ".repeat(margin())}${line}`)
         }
         const activityWidth = Math.max(0, width - margin() * 2)
         const plan = renderFooterPlan(contributions?.readPlan(), activityWidth, theme)

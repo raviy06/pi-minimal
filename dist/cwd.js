@@ -131,9 +131,6 @@ export function installCwd(ctx, sources) {
                     const dirty = git.dirty ? ` ${theme.fg("warning", git.dirty)}` : "";
                     right.push(`${theme.fg("dim", "⎇")} ${theme.fg("muted", git.branch)}${dirty}`);
                 }
-                const background = sources.background?.();
-                if (background)
-                    right.push(theme.fg("warning", background));
                 const siblings = sources.siblings();
                 if (siblings && siblings.length > 0) {
                     right.push(siblings

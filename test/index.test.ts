@@ -96,6 +96,9 @@ function createFake(options: {
 			if (command === "herdr" && args[0] === "agent") {
 				return { stdout: JSON.stringify({ result: { agents: [] } }), stderr: "", code: 0, killed: false }
 			}
+			if (command === "gh") {
+				return { stdout: "", stderr: "not a github repo", code: 1, killed: false }
+			}
 			if (command === "herdr" && args[0] === "tab") {
 				return { stdout: JSON.stringify({ result: { tabs: [] } }), stderr: "", code: 0, killed: false }
 			}
@@ -213,7 +216,7 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		assert.ok(firstHeader < firstReclaim, "header before reclaim")
 		assert.ok(firstFooter < firstReclaim, "footer before reclaim")
 		assert.ok(firstCwd < firstReclaim, "cwd before reclaim")
-		assert.equal(allCalls.some((call) => call.method === "registerTool"), false, "built-in tools are not re-registered")
+		assert.deepEqual(allCalls.filter((call) => call.method === "registerTool").map((call) => (call.args[0] as { name: string }).name), ["list_open_prs"], "only pi-minimal's own tool is registered")
 	})
 
 	test("clears Gauntlet widgets on every chrome reassertion when hiding is opted in, and never on a timer", async (t) => {
@@ -352,6 +355,23 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 		await emit("session_start")
 		const shortcuts = registerCalls.filter((call) => call.method === "registerShortcut")
 		assert.deepEqual(shortcuts.map((call) => call.args[0]), ["ctrl+g"])
+	})
+
+	test("a TUI session asks gh for the repo once and registers /prs", async (t) => {
+		const { agentDir, cwd } = setupDirs(t)
+		process.env[AGENT_DIR_ENV] = agentDir
+		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
+		t.after(restoreEnv)
+
+		const { pi, execCalls, registerCalls, emit } = createFake({ cwd })
+		install(pi)
+		t.after(() => emit("session_shutdown"))
+		assert.ok(registerCalls.some((call) => call.method === "registerCommand" && call.args[0] === "prs"))
+		await emit("session_start")
+		await new Promise((resolve) => setTimeout(resolve, 20))
+		assert.deepEqual(execCalls.filter((call) => call.args[0] === "gh").map((call) => call.args[1]), [["repo", "view", "--json", "nameWithOwner,url"]])
 	})
 
 	test("bash tool calls are inspected with ps; other tools are not", async (t) => {

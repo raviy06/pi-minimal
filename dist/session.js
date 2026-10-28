@@ -9,6 +9,7 @@ import { createGitState } from "./git-state.js";
 import { installHeader } from "./header.js";
 import { createBackgroundTracker } from "./background.js";
 import { backgroundSegment } from "./background-overlay.js";
+import { createPrSource, prSegment } from "./prs.js";
 import { applyReclaim, reclaimPolicy } from "./reclaim.js";
 import { createSiblingSource } from "./siblings.js";
 import { setSessionCwd } from "./tool-rows.js";
@@ -44,6 +45,7 @@ export function createSession(pi, ctx, deps) {
     let stopFooter = () => { };
     let siblings;
     const background = createBackgroundTracker({ pi });
+    const prs = createPrSource({ pi, cwd: () => ctx.cwd });
     const settleTimers = [];
     const contextPct = () => {
         const usage = ctx.getContextUsage?.();
@@ -58,18 +60,20 @@ export function createSession(pi, ctx, deps) {
             busy: deps.busy,
             editorText: () => (typeof ctx.ui.getEditorText === "function" ? ctx.ui.getEditorText() : ""),
             contextPct,
+            prs: (theme) => prSegment(prs.get().prs, theme),
+            onPrsChange: prs.onChange,
+            background: () => backgroundSegment(background.get()),
+            onBackgroundChange: background.onChange,
         }, contributions);
     };
     const installStatusLine = () => {
         installCwd(ctx, {
             gitState: gitState.get,
             siblings: () => siblings?.get(),
-            background: () => backgroundSegment(background.get()),
             onChange(listener) {
                 const offGit = gitState.onChange(listener);
                 const offSiblings = siblings?.onChange(listener) ?? (() => { });
-                const offBackground = background.onChange(listener);
-                return () => { offGit(); offSiblings(); offBackground(); };
+                return () => { offGit(); offSiblings(); };
             },
         });
     };
@@ -103,9 +107,12 @@ export function createSession(pi, ctx, deps) {
         id,
         background,
         backgroundShortcut: config.backgroundShortcut,
+        prs,
         pin,
-        refreshGit(force) { if (alive)
-            void gitState.refresh(force); },
+        refreshGit(force) { if (alive) {
+            void gitState.refresh(force);
+            void prs.refresh();
+        } },
         dispose() {
             if (!alive)
                 return;
@@ -113,6 +120,7 @@ export function createSession(pi, ctx, deps) {
             for (const timer of settleTimers.splice(0))
                 clearTimeout(timer);
             background.dispose();
+            prs.dispose();
             siblings?.dispose();
             siblings = undefined;
             gitState.dispose();

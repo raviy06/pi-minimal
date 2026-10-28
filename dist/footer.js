@@ -1,6 +1,7 @@
 import { keyHint } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import * as chrome from "./chrome.js";
+import { splitRow } from "./cwd.js";
 import { formatTrackerLines } from "./tracker.js";
 import { activityNeedsAnimation, renderFooterActivity } from "./footer-activity.js";
 import { createLiveWatch } from "./live-watch.js";
@@ -45,12 +46,16 @@ export function installFooter(ctx, sources, contributions) {
         const update = () => { syncAnimation(); redraw(); };
         const unsub = footerData.onBranchChange(redraw);
         const unsubscribeActivity = contributions?.subscribe(update);
+        const unsubscribePrs = sources.onPrsChange?.(redraw);
+        const unsubscribeBackground = sources.onBackgroundChange?.(redraw);
         stopMount = () => {
             if (disposed)
                 return;
             disposed = true;
             unsub();
             unsubscribeActivity?.();
+            unsubscribePrs?.();
+            unsubscribeBackground?.();
             live.stop();
         };
         update();
@@ -65,9 +70,16 @@ export function installFooter(ctx, sources, contributions) {
                     keyHint("app.thinking.cycle", "thinking"),
                     keyHint("app.tools.expand", "expand tools"),
                 ].filter(Boolean));
-                if (hints.length > 0) {
-                    const line = theme.fg("dim", hints.join("  ·  "));
-                    out.push(`${" ".repeat(margin())}${truncateToWidth(line, inner, "")}`);
+                // Left: hints (idle only) then the background count (always). Right: PR chips whenever
+                // there are any. The chips are dropped before the left side when the line is too narrow.
+                const background = sources.background?.();
+                const left = [hints.length > 0 ? theme.fg("dim", hints.join("  ·  ")) : "", background ? theme.fg("warning", background) : ""]
+                    .filter(Boolean)
+                    .join(theme.fg("dim", "  ·  "));
+                const prs = sources.prs?.(theme);
+                if (left || prs) {
+                    const line = prs ? splitRow(left, [prs], inner) : truncateToWidth(left, inner, "");
+                    out.push(`${" ".repeat(margin())}${line}`);
                 }
                 const activityWidth = Math.max(0, width - margin() * 2);
                 const plan = renderFooterPlan(contributions?.readPlan(), activityWidth, theme);
