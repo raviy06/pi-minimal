@@ -100,7 +100,7 @@ test.describe("prs display", () => {
 		assert.ok(segment.includes(`<error>${esc}]8;;https://github.com/raviy06/pi-minimal/pull/20${esc}\\#20${esc}]8;;${esc}\\</error>`), "chip #20 is a red OSC 8 link")
 		assert.match(segment, /<accent>.*#23.*<\/accent>/)
 		assert.match(segment, /<dim>\+2<\/dim>$/)
-		assert.equal(stripTerminalSequences(segment).replace(/<[^>]+>/g, ""), "#20 #23 +2")
+		assert.equal(stripTerminalSequences(segment).replace(/[<>]/g, ""), "#20 #23 +2")
 		assert.equal(prSegment([], theme), undefined)
 	})
 
