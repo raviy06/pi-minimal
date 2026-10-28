@@ -1,4 +1,5 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"
+import { showBackgroundOverlay } from "./background-overlay.js"
 import { installCodeBox } from "./code-box.js"
 import { createSession, type Session } from "./session.js"
 import { installToolRenderers, stopLiveWatch } from "./tools.js"
@@ -21,9 +22,33 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
   let active: Session | undefined
   let busy = false
 
+  // Background processes: `/bg` and a shortcut (default ctrl+b, see `backgroundShortcut`). The
+  // shortcut is registered once per key at load, since pi has no unregister; it reads the active
+  // session's config when pressed.
+  const openBackground = async (ctx: ExtensionContext) => {
+    if (!active?.background) return
+    await showBackgroundOverlay(ctx, active.background, active.backgroundShortcut ?? undefined)
+  }
+  pi.registerCommand("bg", { description: "Show processes left running by bash tool calls", handler: (_args, ctx) => openBackground(ctx) })
+  const registeredShortcuts = new Set<string>()
+  const ensureShortcut = () => {
+    const key = active?.backgroundShortcut
+    if (!key || registeredShortcuts.has(key) || typeof pi.registerShortcut !== "function") return
+    registeredShortcuts.add(key)
+    pi.registerShortcut(key as Parameters<ExtensionAPI["registerShortcut"]>[0], {
+      description: "Show background processes",
+      handler: (ctx) => (active?.backgroundShortcut === key ? openBackground(ctx) : undefined),
+    })
+  }
+
   pi.on("session_start", (_event, ctx) => {
     active?.dispose()
     active = createSession(pi, ctx, { busy: () => busy })
+    ensureShortcut()
+  })
+
+  pi.on("tool_execution_start", (event) => {
+    active?.background?.toolStart(event.toolCallId, event.toolName)
   })
 
   pi.on("agent_start", () => {
@@ -37,7 +62,8 @@ export default function piMinimalExtension(pi: ExtensionAPI): void {
     active?.pin("turn_end")
     active?.refreshGit()
   })
-  pi.on("tool_execution_end", () => {
+  pi.on("tool_execution_end", (event) => {
+    active?.background?.toolEnd(event.toolCallId, event.toolName)
     active?.pin("tool_execution_end")
     active?.refreshGit()
   })

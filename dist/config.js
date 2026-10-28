@@ -6,6 +6,7 @@ const DEFAULTS = {
     // Hiding another extension's widgets is opt-in.
     hideGauntletWidgets: false,
     editDiff: "expanded",
+    backgroundShortcut: "ctrl+b",
 };
 export function loadPiMinimalConfig(options) {
     const config = { ...DEFAULTS };
@@ -43,6 +44,13 @@ function applyLayer(config, path) {
             config.hideGauntletWidgets = value;
         else
             console.error(`pi-minimal: hideGauntletWidgets must be a boolean in ${path}`);
+    }
+    if (Object.hasOwn(record, "backgroundShortcut")) {
+        const value = record.backgroundShortcut;
+        if (value === null || (typeof value === "string" && value.trim().length > 0))
+            config.backgroundShortcut = value === null ? null : value.trim();
+        else
+            console.error(`pi-minimal: backgroundShortcut must be a key name such as "ctrl+b" or null in ${path}`);
     }
     if (Object.hasOwn(record, "editDiff")) {
         const value = record.editDiff;

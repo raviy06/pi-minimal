@@ -9,12 +9,15 @@ export const EDIT_DIFF_MODES: readonly EditDiffMode[] = ["always", "never", "exp
 export type PiMinimalConfig = {
 	hideGauntletWidgets: boolean
 	editDiff: EditDiffMode
+	/** Key that opens the background-process overlay; `null` disables the shortcut (`/bg` still works). */
+	backgroundShortcut: string | null
 }
 
 const DEFAULTS: PiMinimalConfig = {
 	// Hiding another extension's widgets is opt-in.
 	hideGauntletWidgets: false,
 	editDiff: "expanded",
+	backgroundShortcut: "ctrl+b",
 }
 
 export function loadPiMinimalConfig(options: {
@@ -57,6 +60,11 @@ function applyLayer(config: PiMinimalConfig, path: string): void {
 		const value = record.hideGauntletWidgets
 		if (typeof value === "boolean") config.hideGauntletWidgets = value
 		else console.error(`pi-minimal: hideGauntletWidgets must be a boolean in ${path}`)
+	}
+	if (Object.hasOwn(record, "backgroundShortcut")) {
+		const value = record.backgroundShortcut
+		if (value === null || (typeof value === "string" && value.trim().length > 0)) config.backgroundShortcut = value === null ? null : value.trim()
+		else console.error(`pi-minimal: backgroundShortcut must be a key name such as "ctrl+b" or null in ${path}`)
 	}
 	if (Object.hasOwn(record, "editDiff")) {
 		const value = record.editDiff

@@ -7,6 +7,8 @@ import { bindFooterContributionEvents } from "./footer-contribution-events.js"
 import { createFooterContributions } from "./footer-contributions.js"
 import { createGitState } from "./git-state.js"
 import { installHeader } from "./header.js"
+import { createBackgroundTracker, type BackgroundTracker } from "./background.js"
+import { backgroundSegment } from "./background-overlay.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
 import type { RexSpawn } from "./rex.js"
 import { createSiblingSource, type SiblingSource } from "./siblings.js"
@@ -23,6 +25,9 @@ export type SessionDeps = {
 
 export type Session = {
   readonly id: string
+  /** Background processes left behind by bash tool calls; undefined outside TUI mode. */
+  readonly background?: BackgroundTracker
+  readonly backgroundShortcut?: string | null
   /** Re-asserts chrome after an event that may have let another extension draw over it. */
   pin(reason: ReclaimReason): void
   refreshGit(force?: boolean): void
@@ -58,6 +63,7 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
   const gitState = createGitState(pi, () => ctx.cwd)
   let stopFooter = () => {}
   let siblings: SiblingSource | undefined
+  const background = createBackgroundTracker({ pi })
   const settleTimers: ReturnType<typeof setTimeout>[] = []
 
   const contextPct = (): number | undefined => {
@@ -80,10 +86,12 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
     installCwd(ctx, {
       gitState: gitState.get,
       siblings: () => siblings?.get(),
+      background: () => backgroundSegment(background.get()),
       onChange(listener) {
         const offGit = gitState.onChange(listener)
         const offSiblings = siblings?.onChange(listener) ?? (() => {})
-        return () => { offGit(); offSiblings() }
+        const offBackground = background.onChange(listener)
+        return () => { offGit(); offSiblings(); offBackground() }
       },
     })
   }
@@ -115,12 +123,15 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
 
   return {
     id,
+    background,
+    backgroundShortcut: config.backgroundShortcut,
     pin,
     refreshGit(force) { if (alive) void gitState.refresh(force) },
     dispose() {
       if (!alive) return
       alive = false
       for (const timer of settleTimers.splice(0)) clearTimeout(timer)
+      background.dispose()
       siblings?.dispose()
       siblings = undefined
       gitState.dispose()

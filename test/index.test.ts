@@ -104,6 +104,12 @@ function createFake(options: {
 		registerTool(...args: unknown[]) {
 			record(registerCalls, "registerTool", args)
 		},
+		registerCommand(...args: unknown[]) {
+			record(registerCalls, "registerCommand", args)
+		},
+		registerShortcut(...args: unknown[]) {
+			record(registerCalls, "registerShortcut", args)
+		},
 		registerToolRenderer(...args: unknown[]) {
 			record(registerCalls, "registerToolRenderer", args)
 		},
@@ -326,6 +332,48 @@ test.describe("session chrome", { concurrency: 1 }, () => {
 
 		assert.equal(herdrProbes(execCalls).length, 1)
 		assert.equal(execCalls.filter((call) => call.args[0] === "rex").length, 0)
+	})
+
+	test("registers /bg and the background shortcut once, honouring backgroundShortcut", async (t) => {
+		const { agentDir, cwd } = setupDirs(t)
+		writeFileSync(join(agentDir, "pi-minimal.json"), JSON.stringify({ backgroundShortcut: "ctrl+g" }))
+		process.env[AGENT_DIR_ENV] = agentDir
+		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
+		t.after(restoreEnv)
+
+		const { pi, registerCalls, emit } = createFake({ cwd })
+		install(pi)
+		t.after(() => emit("session_shutdown"))
+		assert.ok(registerCalls.some((call) => call.method === "registerCommand" && call.args[0] === "bg"))
+		assert.equal(registerCalls.filter((call) => call.method === "registerShortcut").length, 0, "shortcut waits for session config")
+		await emit("session_start")
+		await emit("session_start")
+		const shortcuts = registerCalls.filter((call) => call.method === "registerShortcut")
+		assert.deepEqual(shortcuts.map((call) => call.args[0]), ["ctrl+g"])
+	})
+
+	test("bash tool calls are inspected with ps; other tools are not", async (t) => {
+		const { agentDir, cwd } = setupDirs(t)
+		process.env[AGENT_DIR_ENV] = agentDir
+		delete process.env.HERDR_ENV
+		delete process.env.REX_SESSION
+		delete process.env.REX_BLOCK
+		t.after(restoreEnv)
+
+		const { pi, execCalls, emit } = createFake({ cwd })
+		install(pi)
+		t.after(() => emit("session_shutdown"))
+		await emit("session_start")
+		await emit("tool_execution_start", { toolCallId: "r1", toolName: "read" })
+		await emit("tool_execution_end", { toolCallId: "r1", toolName: "read" })
+		await new Promise((resolve) => setTimeout(resolve, 10))
+		assert.equal(execCalls.filter((call) => call.args[0] === "ps").length, 0)
+		await emit("tool_execution_start", { toolCallId: "b1", toolName: "bash" })
+		await emit("tool_execution_end", { toolCallId: "b1", toolName: "bash" })
+		await new Promise((resolve) => setTimeout(resolve, 10))
+		assert.equal(execCalls.filter((call) => call.args[0] === "ps").length, 2)
 	})
 
 	test("non-TUI modes install no TUI components", async (t) => {

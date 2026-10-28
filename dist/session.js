@@ -7,6 +7,8 @@ import { bindFooterContributionEvents } from "./footer-contribution-events.js";
 import { createFooterContributions } from "./footer-contributions.js";
 import { createGitState } from "./git-state.js";
 import { installHeader } from "./header.js";
+import { createBackgroundTracker } from "./background.js";
+import { backgroundSegment } from "./background-overlay.js";
 import { applyReclaim, reclaimPolicy } from "./reclaim.js";
 import { createSiblingSource } from "./siblings.js";
 import { setSessionCwd } from "./tool-rows.js";
@@ -41,6 +43,7 @@ export function createSession(pi, ctx, deps) {
     const gitState = createGitState(pi, () => ctx.cwd);
     let stopFooter = () => { };
     let siblings;
+    const background = createBackgroundTracker({ pi });
     const settleTimers = [];
     const contextPct = () => {
         const usage = ctx.getContextUsage?.();
@@ -61,10 +64,12 @@ export function createSession(pi, ctx, deps) {
         installCwd(ctx, {
             gitState: gitState.get,
             siblings: () => siblings?.get(),
+            background: () => backgroundSegment(background.get()),
             onChange(listener) {
                 const offGit = gitState.onChange(listener);
                 const offSiblings = siblings?.onChange(listener) ?? (() => { });
-                return () => { offGit(); offSiblings(); };
+                const offBackground = background.onChange(listener);
+                return () => { offGit(); offSiblings(); offBackground(); };
             },
         });
     };
@@ -96,6 +101,8 @@ export function createSession(pi, ctx, deps) {
         settleTimers.push(setTimeout(() => pin("session_settle"), delay));
     return {
         id,
+        background,
+        backgroundShortcut: config.backgroundShortcut,
         pin,
         refreshGit(force) { if (alive)
             void gitState.refresh(force); },
@@ -105,6 +112,7 @@ export function createSession(pi, ctx, deps) {
             alive = false;
             for (const timer of settleTimers.splice(0))
                 clearTimeout(timer);
+            background.dispose();
             siblings?.dispose();
             siblings = undefined;
             gitState.dispose();
