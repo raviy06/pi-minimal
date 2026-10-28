@@ -10,6 +10,11 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-29
+
+Rex support and a footer hints line that carries live state: sibling agents from Rex as well as
+Herdr, background processes left by bash calls, and the repo's open PRs as clickable chips.
+
 ### Added
 
 - Open PRs: the footer shows `#1675 #1670 +3` chips, right-aligned on the hints line below the editor, for open PRs in the repo of cwd that you
@@ -227,7 +232,8 @@ is now opt-in and the 200 ms chrome steal interval is gone.
 - Initial release: header/footer chrome, compact tool activity rows, working
   status line, Herdr sibling status, Gauntlet widget hiding.
 
-[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/raviy06/pi-minimal/compare/v0.5.0...v0.6.0
 [0.2.3]: https://github.com/raviy06/pi-minimal/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/raviy06/pi-minimal/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/raviy06/pi-minimal/compare/v0.2.0...v0.2.1
