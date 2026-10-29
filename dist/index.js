@@ -1,5 +1,8 @@
+import { Type } from "@earendil-works/pi-ai";
 import { showBackgroundOverlay } from "./background-overlay.js";
 import { installCodeBox } from "./code-box.js";
+import { isPrCreateCommand } from "./prs.js";
+import { parsePrFilter, prsToolResult, runPrsCommand } from "./prs-command.js";
 import { createSession } from "./session.js";
 import { installToolRenderers, stopLiveWatch } from "./tools.js";
 import { installTranscript } from "./transcript.js";
@@ -27,6 +30,27 @@ export default function piMinimalExtension(pi) {
         await showBackgroundOverlay(ctx, active.background, active.backgroundShortcut ?? undefined);
     };
     pi.registerCommand("bg", { description: "Show processes left running by bash tool calls", handler: (_args, ctx) => openBackground(ctx) });
+    // Open PRs for the repo in cwd: `/prs [mine|review|all]` and the `list_open_prs` tool.
+    pi.registerCommand("prs", {
+        description: "Open PRs in this repo that I authored or that need my review",
+        handler: (args, ctx) => runPrsCommand(args, ctx, pi, active?.prs),
+    });
+    pi.registerTool({
+        name: "list_open_prs",
+        label: "List Open PRs",
+        description: "List open pull requests in the current repository that the user authored or has been asked to review (via the gh CLI).",
+        parameters: Type.Object({
+            filter: Type.Optional(Type.Union([Type.Literal("all"), Type.Literal("mine"), Type.Literal("review")], { description: "all (default), mine, or review (waiting on my review)" })),
+        }),
+        async execute(_toolCallId, params) {
+            await active?.prs?.refresh();
+            const result = prsToolResult(active?.prs, params.filter ?? parsePrFilter(""));
+            const text = result.prs.length === 0
+                ? `No open PRs${result.repo ? ` in ${result.repo}` : ""}${result.error ? ` (${result.error})` : ""}.`
+                : result.prs.map((pr) => `#${pr.number} [${pr.kind}${pr.isDraft ? ", draft" : ""}${pr.ciFailing ? ", CI failing" : ""}] ${pr.title} — ${pr.url}`).join("\n");
+            return { content: [{ type: "text", text }], details: result };
+        },
+    });
     const registeredShortcuts = new Set();
     const ensureShortcut = () => {
         const key = active?.backgroundShortcut;
@@ -43,8 +67,15 @@ export default function piMinimalExtension(pi) {
         active = createSession(pi, ctx, { busy: () => busy });
         ensureShortcut();
     });
+    // Commands that create a PR: remember the URL they print so the chips follow the session
+    // even when cwd is another repo (worktrees) or no repo at all.
+    const prCreateCalls = new Map();
     pi.on("tool_execution_start", (event) => {
         active?.background?.toolStart(event.toolCallId, event.toolName);
+        const command = event.args?.command;
+        if ((event.toolName === "bash" || event.toolName === "powershell") && typeof command === "string" && isPrCreateCommand(command)) {
+            prCreateCalls.set(event.toolCallId, true);
+        }
     });
     pi.on("agent_start", () => {
         busy = true;
@@ -59,6 +90,10 @@ export default function piMinimalExtension(pi) {
     });
     pi.on("tool_execution_end", (event) => {
         active?.background?.toolEnd(event.toolCallId, event.toolName);
+        if (prCreateCalls.delete(event.toolCallId) && !event.isError) {
+            const content = event.result?.content ?? [];
+            active?.notePrUrls(content.map((part) => (part.type === "text" && typeof part.text === "string" ? part.text : "")).join("\n"));
+        }
         active?.pin("tool_execution_end");
         active?.refreshGit();
     });

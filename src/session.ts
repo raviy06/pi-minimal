@@ -9,12 +9,30 @@ import { createGitState } from "./git-state.js"
 import { installHeader } from "./header.js"
 import { createBackgroundTracker, type BackgroundTracker } from "./background.js"
 import { backgroundSegment } from "./background-overlay.js"
+import { createPrSource, findPrUrls, prSegment, type PrSource } from "./prs.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
 import type { RexSpawn } from "./rex.js"
 import { createSiblingSource, type SiblingSource } from "./siblings.js"
 import { setSessionCwd } from "./tool-rows.js"
 import { setEditDiffMode } from "./tools.js"
 import { hideGauntletWidgets } from "./tracker.js"
+
+/** Custom session entry remembering a PR this session created, so a resumed session shows it. */
+export const PR_ENTRY_TYPE = "pi-minimal.pr"
+
+function readSessionPrs(ctx: ExtensionContext): string[] {
+  const urls: string[] = []
+  try {
+    for (const entry of ctx.sessionManager.getBranch()) {
+      if (entry.type !== "custom" || entry.customType !== PR_ENTRY_TYPE) continue
+      const url = (entry.data as { url?: unknown } | undefined)?.url
+      if (typeof url === "string") urls.push(url)
+    }
+  } catch {
+    // No branch available (tests, odd hosts): start empty.
+  }
+  return urls
+}
 
 export type SessionDeps = {
   /** Whether an agent run is in progress; owned by the extension because agent events are not session-scoped. */
@@ -28,6 +46,10 @@ export type Session = {
   /** Background processes left behind by bash tool calls; undefined outside TUI mode. */
   readonly background?: BackgroundTracker
   readonly backgroundShortcut?: string | null
+  /** Open PRs for the repo in cwd plus ones this session created; undefined outside TUI mode. */
+  readonly prs?: PrSource
+  /** Records PR URLs found in text (e.g. `gh pr create` output) as this session's PRs. */
+  notePrUrls(text: string): void
   /** Re-asserts chrome after an event that may have let another extension draw over it. */
   pin(reason: ReclaimReason): void
   refreshGit(force?: boolean): void
@@ -47,7 +69,7 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
   const contributions = createFooterContributions()
   const stopContributionEvents = bindFooterContributionEvents(pi.events, contributions, id, ctx.mode)
   if (ctx.mode !== "tui") {
-    return { id, pin() {}, refreshGit() {}, dispose() { if (!alive) return; alive = false; stopContributionEvents() } }
+    return { id, pin() {}, refreshGit() {}, notePrUrls() {}, dispose() { if (!alive) return; alive = false; stopContributionEvents() } }
   }
 
   const config = loadPiMinimalConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() })
@@ -64,6 +86,7 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
   let stopFooter = () => {}
   let siblings: SiblingSource | undefined
   const background = createBackgroundTracker({ pi })
+  const prs = createPrSource({ pi, cwd: () => ctx.cwd, sessionPrs: readSessionPrs(ctx) })
   const settleTimers: ReturnType<typeof setTimeout>[] = []
 
   const contextPct = (): number | undefined => {
@@ -79,6 +102,13 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
       busy: deps.busy,
       editorText: () => (typeof ctx.ui.getEditorText === "function" ? ctx.ui.getEditorText() : ""),
       contextPct,
+      prs: (theme) => {
+        const snap = prs.get()
+        return prSegment(snap.prs, theme, 4, snap.repo ? `${snap.repo.host}/${snap.repo.nameWithOwner}` : undefined)
+      },
+      onPrsChange: prs.onChange,
+      background: () => backgroundSegment(background.get()),
+      onBackgroundChange: background.onChange,
     }, contributions)
   }
 
@@ -86,12 +116,10 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
     installCwd(ctx, {
       gitState: gitState.get,
       siblings: () => siblings?.get(),
-      background: () => backgroundSegment(background.get()),
       onChange(listener) {
         const offGit = gitState.onChange(listener)
         const offSiblings = siblings?.onChange(listener) ?? (() => {})
-        const offBackground = background.onChange(listener)
-        return () => { offGit(); offSiblings(); offBackground() }
+        return () => { offGit(); offSiblings() }
       },
     })
   }
@@ -125,13 +153,28 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
     id,
     background,
     backgroundShortcut: config.backgroundShortcut,
+    prs,
+    notePrUrls(text) {
+      if (!alive) return
+      const known = new Set(prs.sessionPrs())
+      for (const url of findPrUrls(text)) {
+        if (known.has(url)) continue
+        prs.addSessionPr(url)
+        try {
+          pi.appendEntry?.(PR_ENTRY_TYPE, { url })
+        } catch {
+          // A session that cannot accept entries just forgets the PR on restart.
+        }
+      }
+    },
     pin,
-    refreshGit(force) { if (alive) void gitState.refresh(force) },
+    refreshGit(force) { if (alive) { void gitState.refresh(force); void prs.refresh() } },
     dispose() {
       if (!alive) return
       alive = false
       for (const timer of settleTimers.splice(0)) clearTimeout(timer)
       background.dispose()
+      prs.dispose()
       siblings?.dispose()
       siblings = undefined
       gitState.dispose()

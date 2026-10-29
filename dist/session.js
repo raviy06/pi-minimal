@@ -9,11 +9,30 @@ import { createGitState } from "./git-state.js";
 import { installHeader } from "./header.js";
 import { createBackgroundTracker } from "./background.js";
 import { backgroundSegment } from "./background-overlay.js";
+import { createPrSource, findPrUrls, prSegment } from "./prs.js";
 import { applyReclaim, reclaimPolicy } from "./reclaim.js";
 import { createSiblingSource } from "./siblings.js";
 import { setSessionCwd } from "./tool-rows.js";
 import { setEditDiffMode } from "./tools.js";
 import { hideGauntletWidgets } from "./tracker.js";
+/** Custom session entry remembering a PR this session created, so a resumed session shows it. */
+export const PR_ENTRY_TYPE = "pi-minimal.pr";
+function readSessionPrs(ctx) {
+    const urls = [];
+    try {
+        for (const entry of ctx.sessionManager.getBranch()) {
+            if (entry.type !== "custom" || entry.customType !== PR_ENTRY_TYPE)
+                continue;
+            const url = entry.data?.url;
+            if (typeof url === "string")
+                urls.push(url);
+        }
+    }
+    catch {
+        // No branch available (tests, odd hosts): start empty.
+    }
+    return urls;
+}
 /**
  * Everything pi-minimal owns for one session: config, cwd, the contribution registry, the git
  * poller, the sibling source (Herdr or Rex), and the header/footer/status-line chrome. Disposal stops every timer and makes
@@ -27,7 +46,7 @@ export function createSession(pi, ctx, deps) {
     const contributions = createFooterContributions();
     const stopContributionEvents = bindFooterContributionEvents(pi.events, contributions, id, ctx.mode);
     if (ctx.mode !== "tui") {
-        return { id, pin() { }, refreshGit() { }, dispose() { if (!alive)
+        return { id, pin() { }, refreshGit() { }, notePrUrls() { }, dispose() { if (!alive)
                 return; alive = false; stopContributionEvents(); } };
     }
     const config = loadPiMinimalConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() });
@@ -44,6 +63,7 @@ export function createSession(pi, ctx, deps) {
     let stopFooter = () => { };
     let siblings;
     const background = createBackgroundTracker({ pi });
+    const prs = createPrSource({ pi, cwd: () => ctx.cwd, sessionPrs: readSessionPrs(ctx) });
     const settleTimers = [];
     const contextPct = () => {
         const usage = ctx.getContextUsage?.();
@@ -58,18 +78,23 @@ export function createSession(pi, ctx, deps) {
             busy: deps.busy,
             editorText: () => (typeof ctx.ui.getEditorText === "function" ? ctx.ui.getEditorText() : ""),
             contextPct,
+            prs: (theme) => {
+                const snap = prs.get();
+                return prSegment(snap.prs, theme, 4, snap.repo ? `${snap.repo.host}/${snap.repo.nameWithOwner}` : undefined);
+            },
+            onPrsChange: prs.onChange,
+            background: () => backgroundSegment(background.get()),
+            onBackgroundChange: background.onChange,
         }, contributions);
     };
     const installStatusLine = () => {
         installCwd(ctx, {
             gitState: gitState.get,
             siblings: () => siblings?.get(),
-            background: () => backgroundSegment(background.get()),
             onChange(listener) {
                 const offGit = gitState.onChange(listener);
                 const offSiblings = siblings?.onChange(listener) ?? (() => { });
-                const offBackground = background.onChange(listener);
-                return () => { offGit(); offSiblings(); offBackground(); };
+                return () => { offGit(); offSiblings(); };
             },
         });
     };
@@ -103,9 +128,28 @@ export function createSession(pi, ctx, deps) {
         id,
         background,
         backgroundShortcut: config.backgroundShortcut,
+        prs,
+        notePrUrls(text) {
+            if (!alive)
+                return;
+            const known = new Set(prs.sessionPrs());
+            for (const url of findPrUrls(text)) {
+                if (known.has(url))
+                    continue;
+                prs.addSessionPr(url);
+                try {
+                    pi.appendEntry?.(PR_ENTRY_TYPE, { url });
+                }
+                catch {
+                    // A session that cannot accept entries just forgets the PR on restart.
+                }
+            }
+        },
         pin,
-        refreshGit(force) { if (alive)
-            void gitState.refresh(force); },
+        refreshGit(force) { if (alive) {
+            void gitState.refresh(force);
+            void prs.refresh();
+        } },
         dispose() {
             if (!alive)
                 return;
@@ -113,6 +157,7 @@ export function createSession(pi, ctx, deps) {
             for (const timer of settleTimers.splice(0))
                 clearTimeout(timer);
             background.dispose();
+            prs.dispose();
             siblings?.dispose();
             siblings = undefined;
             gitState.dispose();

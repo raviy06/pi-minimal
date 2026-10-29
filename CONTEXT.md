@@ -38,11 +38,21 @@ When a word below has a narrower meaning than in everyday use, the narrower mean
 - **Code box** — the faint frame around fenced code blocks (`src/code-box.ts`, a pi-tui
   `Markdown.prototype.renderToken` patch).
 
+- **Open PR** — an open pull request in the repo of `cwd` that I authored (*mine*) or that requests
+  my review (*review*); PRs that merely mention me are not shown (`src/prs.ts`, `PullRequest`,
+  `kind`). Found with `gh repo view` → `gh api user` (login differs per host) → `gh pr list
+  --search involves:@me`. Shown as *chips* right-aligned on the footer's hints line (`src/footer.ts`): `#1675`, an OSC 8 hyperlink to the
+  PR, coloured by `prColor` (trouble > review > draft > mine). `/prs` and the `list_open_prs` tool
+  live in `src/prs-command.ts`. The *PR source* (`PrSource`) polls every 3 min and on `refreshGit`,
+  throttled to once a minute. A **session PR** is one this session created: a `gh pr create` /
+  `gt submit` bash call whose output prints a PR URL (`findPrUrls`). Its URL is stored as a
+  `pi-minimal.pr` custom session entry (restored on resume) and fetched with `gh pr view URL`
+  whatever cwd is, labelled `repo#n` outside the cwd repo, until it is merged or closed.
 - **Background process** — a process a `bash` tool call left running after it returned
   (`src/background.ts`). Found by diffing `ps` before/after the call: new, orphaned (ppid 1) and in a
   *tracked group*, a process group whose leader (the tool shell) was born and died inside the call.
   Groups are polled every 2 s until empty. A process is `running` or `ended` (gone from `ps`, kept
-  60 s; no exit code is knowable). Shown as `⚙ N bg` on the status line and listed in the
+  60 s; no exit code is knowable). Shown as `⚙ N bg` after the hints on the footer's hints line (`src/footer.ts`) and listed in the
   *background overlay* (`src/background-overlay.ts`, `/bg` or `backgroundShortcut`, default `ctrl+b`).
 
 ## Footer contributions (the extension point)

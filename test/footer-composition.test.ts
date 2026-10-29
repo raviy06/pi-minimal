@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { initTheme, type ExtensionContext } from "@earendil-works/pi-coding-agent"
+import { visibleWidth } from "@earendil-works/pi-tui"
 import { installFooter } from "../src/footer.js"
 import { createFooterContributions, type ActivitySnapshot } from "../src/footer-contributions.js"
 
@@ -23,6 +24,8 @@ const data = (revision: number, motion: "spinner" | "static" = "spinner"): Activ
   revision, rows: [{ key: "1", agent: "worker", state: "running", text: "Last: tests" }], omitted: 0, motion, format: "icons",
 })
 const sources = { busy: () => false, editorText: () => "", contextPct: () => 10 }
+// eslint-disable-next-line no-control-regex
+const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "")
 
 test("no contributor preserves existing footer; activity is last even while typing/busy", () => {
   const f = fixture(), registry = createFooterContributions("S1")
@@ -126,4 +129,62 @@ test("legacy task summary precedes activity", () => {
   assert.equal(lines.at(-2), "")
   assert.ok(lines.at(-1)?.includes("worker"))
   dispose()
+})
+
+test("background count follows the hints and survives hiding them", () => {
+  const f = fixture()
+  let bg: string | undefined = "⚙ 2 bg"
+  let listener: (() => void) | undefined
+  const bgSources = {
+    ...sources,
+    background: () => bg,
+    onBackgroundChange: (l: () => void) => { listener = l; return () => { listener = undefined } },
+    prs: () => "#24",
+  }
+  const stop = installFooter(f.ctx, bgSources)
+  const component = f.mount()
+  assert.match(stripAnsi(component.render(80)[0] ?? ""), /^ enter send.*expand tools {2}· {2}⚙ 2 bg\s+#24$/)
+  stop(); component.dispose?.()
+  const typingStop = installFooter(f.ctx, { ...bgSources, busy: () => true })
+  const typing = f.mount()
+  assert.match(typing.render(80)[0] ?? "", /^ ⚙ 2 bg\s+#24$/)
+  const before = f.renders
+  bg = undefined
+  listener?.()
+  assert.equal(f.renders, before + 1)
+  assert.deepEqual(typing.render(80).map((line) => line.trim()), ["#24"])
+  typingStop(); typing.dispose?.()
+  assert.equal(listener, undefined)
+})
+
+test("PR chips sit right-aligned on the hints line, stay when hints hide, and re-render on change", () => {
+  const f = fixture()
+  let chips: string | undefined = "#23 #22"
+  let listener: (() => void) | undefined
+  const prsSources = {
+    ...sources,
+    prs: () => chips,
+    onPrsChange: (l: () => void) => { listener = l; return () => { listener = undefined } },
+  }
+  const stop = installFooter(f.ctx, prsSources)
+  const component = f.mount()
+  const idle = component.render(80)
+  assert.equal(idle.length, 1)
+  assert.match(idle[0] ?? "", /^ \S.*send.*#23 #22$/)
+  assert.equal(visibleWidth(idle[0] ?? ""), 1 + 78, "chips are flush right within the margin")
+
+  // Typing hides the hints; the chips keep the line.
+  stop(); component.dispose?.()
+  const typingStop = installFooter(f.ctx, { ...prsSources, editorText: () => "draft" })
+  const typing = f.mount()
+  assert.deepEqual(typing.render(80).map((line) => line.trim()), ["#23 #22"])
+
+  // A change notification triggers a render; no chips, no line.
+  const before = f.renders
+  chips = undefined
+  listener?.()
+  assert.equal(f.renders, before + 1)
+  assert.deepEqual(typing.render(80), [])
+  typingStop(); typing.dispose?.()
+  assert.equal(listener, undefined, "unsubscribed on dispose")
 })

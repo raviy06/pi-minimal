@@ -10,9 +10,22 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-29
+
+Rex support and a footer hints line that carries live state: sibling agents from Rex as well as
+Herdr, background processes left by bash calls, and the repo's open PRs as clickable chips.
+
 ### Added
 
-- Background processes: `⚙ N bg` on the status line while processes left behind by `bash` tool
+- Open PRs: the footer shows `#1675 #1670 +3` chips, right-aligned on the hints line below the editor, for open PRs in the repo of cwd that you
+  authored or were asked to review, each an OSC 8 hyperlink to the PR, coloured accent (mine), dim
+  (my draft), amber (needs my review) or red (failing CI / changes requested). `/prs [mine|review|all]`
+  lists them with open / paste URL / checkout actions; `list_open_prs` tool for the model. Uses the
+  `gh` CLI; works on GitHub.com and GitHub Enterprise. PRs created by the session (`gh pr create`,
+  `gt submit`) are remembered as session entries and shown from any directory, as `repo#n` when
+  outside the cwd repo, until merged. New peer dependency `@earendil-works/pi-ai` (supplied by pi)
+  for the tool schema.
+- Background processes: `⚙ N bg` after the key hints in the footer while processes left behind by `bash` tool
   calls are running; `ctrl+b` / `/bg` opens an overlay listing each one with running/ended state and
   duration, `k` kills the selection, `K` its process group. Attribution diffs `ps` around each bash
   call using pi's detached process groups, so no command is rewritten. New `backgroundShortcut`
@@ -221,7 +234,8 @@ is now opt-in and the 200 ms chrome steal interval is gone.
 - Initial release: header/footer chrome, compact tool activity rows, working
   status line, Herdr sibling status, Gauntlet widget hiding.
 
-[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/raviy06/pi-minimal/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/raviy06/pi-minimal/compare/v0.5.0...v0.6.0
 [0.2.3]: https://github.com/raviy06/pi-minimal/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/raviy06/pi-minimal/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/raviy06/pi-minimal/compare/v0.2.0...v0.2.1
