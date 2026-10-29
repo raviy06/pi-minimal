@@ -12,8 +12,15 @@ When a word below has a narrower meaning than in everyday use, the narrower mean
 - **Reclaim** — re-installing chrome after an event that may have let another extension draw over
   it (`src/reclaim.ts`). A *reclaim reason* (`session_start`, `session_settle`, `turn_end`,
   `tool_execution_end`) maps to a policy: whether to reset the editor and whether to reinstall chrome.
-- **Status line** — `model · thinking · context meter · cwd · ⎇ branch ±dirty · Herdr siblings`
-  (`src/cwd.ts`). *Siblings* are other Herdr panes in the same workspace (`src/herdr.ts`).
+- **Status line** — `model · thinking · context meter · cwd · ⎇ branch ±dirty · siblings`
+  (`src/cwd.ts`). *Siblings* are other agents in the same host workspace with their state
+  (`working | blocked | idle | done | error`).
+- **Sibling source** — where siblings come from (`src/siblings.ts`, `SiblingSource`: `get`,
+  `onChange`, `dispose`). Chosen from the environment at session start: the *Herdr source*
+  polls `herdr agent list` / `herdr tab list` (`src/herdr.ts`, `HERDR_ENV=1`); the *Rex source*
+  follows one `rex events -s SESSION --json` stream and reads OSC 7501 program-status records
+  (`src/rex.ts`, `REX_SESSION` + `REX_BLOCK`). Herdr wins when both are set. A sibling's name is
+  its tab label, or the program's `app` when the tab only has a Rex auto-label (`Window 1a2b…`).
 - **Hints** — the keybinding labels in the footer (`send · thinking · expand tools`, plus
   `/compact` from 70 % context), shown only when idle with an empty editor (`src/footer.ts`).
   Not task hints and not the change hints other extensions emit.
@@ -77,7 +84,7 @@ When a word below has a narrower meaning than in everyday use, the narrower mean
 - **Load-time hooks** — installed once per extension instance: tool renderers, the markdown
   transformer, the code-box patch, working status and the turn rule (`src/index.ts`).
 - **Session** — everything scoped to one pi session: config, cwd, the contribution registry,
-  git and Herdr pollers, settle timers and chrome (`src/session.ts`, when present). Created on
+  git poller, sibling source, settle timers and chrome (`src/session.ts`, when present). Created on
   `session_start`, disposed on `session_shutdown` or when the next session starts.
 - **Chrome margin** — pi's `outputPad`, mirrored on `globalThis` so module copies reloaded by
   `/reload` agree (`src/chrome.ts`).

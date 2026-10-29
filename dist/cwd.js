@@ -86,13 +86,13 @@ function siblingColor(status) {
         return "success";
     if (status === "working")
         return "accent";
-    if (status === "blocked")
+    if (status === "blocked" || status === "error")
         return "error";
     return "muted";
 }
 export function installCwd(ctx, sources) {
     ctx.ui.setWidget("tw-cwd", (tui, theme) => {
-        const unsub = sources.onGitChange(() => tui.requestRender());
+        const unsub = sources.onChange(() => tui.requestRender());
         return {
             dispose: unsub,
             invalidate() { },

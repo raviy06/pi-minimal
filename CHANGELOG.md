@@ -10,6 +10,20 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ## [Unreleased]
 
+### Added
+
+- Rex siblings: inside a Rex session (`REX_SESSION` + `REX_BLOCK`) the status line shows other
+  panes' agent state, read from Rex's Program Status Protocol (OSC 7501) over one
+  `rex events --json` stream instead of polling. Needs a reporter in each pi (an extension that
+  writes OSC 7501 on `agent_start` / `agent_settled`); programs such as claude-code or terraform
+  that already speak the protocol appear as well. `error` renders like `blocked`.
+
+### Changed
+
+- Sibling status now comes from a `SiblingSource` (`src/siblings.ts`) picked from the environment;
+  the Herdr poller moved from `session.ts` into `herdr.ts` unchanged. Herdr wins when both hosts
+  are present. The status line re-renders when the sibling list changes, not only on git changes.
+
 ## [0.5.0] - 2026-10-27
 
 Session lifecycle, one tool-row lifecycle, and a domain glossary. `hideGauntletWidgets`

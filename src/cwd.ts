@@ -3,7 +3,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
 import path from "node:path"
 import * as chrome from "./chrome.js"
 import { formatGitState, type GitState } from "./git-state.js"
-import type { Sibling } from "./herdr.js"
+import type { Sibling } from "./siblings.js"
 
 /** Tolerates a stale chrome module after /reload, where only CHROME_MARGIN may exist. */
 const margin = (): number => (typeof chrome.chromeMargin === "function" ? chrome.chromeMargin() : (chrome.CHROME_MARGIN ?? 1))
@@ -88,21 +88,22 @@ export function splitRow(left: string, rightSegments: string[], width: number, s
 function siblingColor(status: string): "success" | "warning" | "error" | "accent" | "muted" {
   if (status === "idle" || status === "done") return "success"
   if (status === "working") return "accent"
-  if (status === "blocked") return "error"
+  if (status === "blocked" || status === "error") return "error"
   return "muted"
 }
 
 export type StatusLineSources = {
   gitState: () => GitState | undefined
   siblings: () => Sibling[] | undefined
-  onGitChange: (listener: () => void) => () => void
+  /** Fires when git state or the sibling list may have changed; the widget re-renders. */
+  onChange: (listener: () => void) => () => void
 }
 
 export function installCwd(ctx: ExtensionContext, sources: StatusLineSources): void {
   ctx.ui.setWidget(
     "tw-cwd",
     (tui, theme) => {
-      const unsub = sources.onGitChange(() => tui.requestRender())
+      const unsub = sources.onChange(() => tui.requestRender())
       return {
         dispose: unsub,
         invalidate() {},

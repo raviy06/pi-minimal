@@ -7,8 +7,9 @@ import { bindFooterContributionEvents } from "./footer-contribution-events.js"
 import { createFooterContributions } from "./footer-contributions.js"
 import { createGitState } from "./git-state.js"
 import { installHeader } from "./header.js"
-import { listSiblings, parseAgentList, parseTabList, type Sibling } from "./herdr.js"
 import { applyReclaim, reclaimPolicy, type ReclaimReason } from "./reclaim.js"
+import type { RexSpawn } from "./rex.js"
+import { createSiblingSource, type SiblingSource } from "./siblings.js"
 import { setSessionCwd } from "./tool-rows.js"
 import { setEditDiffMode } from "./tools.js"
 import { hideGauntletWidgets } from "./tracker.js"
@@ -16,6 +17,8 @@ import { hideGauntletWidgets } from "./tracker.js"
 export type SessionDeps = {
   /** Whether an agent run is in progress; owned by the extension because agent events are not session-scoped. */
   busy: () => boolean
+  /** Test seam for the Rex event stream; defaults to node:child_process.spawn. */
+  spawn?: RexSpawn
 }
 
 export type Session = {
@@ -26,13 +29,9 @@ export type Session = {
   dispose(): void
 }
 
-const HERDR_FAST_MS = 2000
-const HERDR_SLOW_MS = 10000
-const HERDR_EXEC_TIMEOUT_MS = 3000
-
 /**
- * Everything pi-minimal owns for one session: config, cwd, the contribution registry, the git and
- * Herdr pollers, and the header/footer/status-line chrome. Disposal stops every timer and makes
+ * Everything pi-minimal owns for one session: config, cwd, the contribution registry, the git
+ * poller, the sibling source (Herdr or Rex), and the header/footer/status-line chrome. Disposal stops every timer and makes
  * late async results inert, so two sessions in one process never share or overwrite each other's
  * state. Non-TUI sessions get a session too, but it only binds the contribution protocol (which
  * replies `not-tui`) and installs no chrome.
@@ -58,10 +57,7 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
 
   const gitState = createGitState(pi, () => ctx.cwd)
   let stopFooter = () => {}
-  let siblings: Sibling[] | undefined
-  let herdrTimer: ReturnType<typeof setInterval> | undefined
-  let herdrPeriod = 0
-  let herdrInFlight: AbortController | undefined
+  let siblings: SiblingSource | undefined
   const settleTimers: ReturnType<typeof setTimeout>[] = []
 
   const contextPct = (): number | undefined => {
@@ -81,7 +77,15 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
   }
 
   const installStatusLine = () => {
-    installCwd(ctx, { gitState: gitState.get, siblings: () => siblings, onGitChange: gitState.onChange })
+    installCwd(ctx, {
+      gitState: gitState.get,
+      siblings: () => siblings?.get(),
+      onChange(listener) {
+        const offGit = gitState.onChange(listener)
+        const offSiblings = siblings?.onChange(listener) ?? (() => {})
+        return () => { offGit(); offSiblings() }
+      },
+    })
   }
 
   const pin = (reason: ReclaimReason) => {
@@ -95,37 +99,9 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
     installStatusLine()
   }
 
-  const scheduleHerdr = (periodMs: number) => {
-    if (!alive || herdrPeriod === periodMs) return
-    if (herdrTimer) clearInterval(herdrTimer)
-    herdrPeriod = periodMs
-    herdrTimer = setInterval(() => { void probeHerdr() }, periodMs)
-  }
-
-  const probeHerdr = async () => {
-    if (!alive || herdrInFlight) return
-    const ac = new AbortController()
-    herdrInFlight = ac
-    try {
-      const agentRun = await pi.exec("herdr", ["agent", "list"], { timeout: HERDR_EXEC_TIMEOUT_MS, signal: ac.signal })
-      if (!alive) return
-      const tabRun = await pi.exec("herdr", ["tab", "list"], { timeout: HERDR_EXEC_TIMEOUT_MS, signal: ac.signal })
-      if (!alive) return
-      if (agentRun.code !== 0 || tabRun.code !== 0 || agentRun.killed || tabRun.killed) {
-        siblings = undefined
-        scheduleHerdr(HERDR_SLOW_MS)
-        return
-      }
-      siblings = listSiblings(parseAgentList(agentRun.stdout), parseTabList(tabRun.stdout), process.env.HERDR_PANE_ID, process.env.HERDR_TAB_ID)
-      scheduleHerdr(siblings ? HERDR_FAST_MS : HERDR_SLOW_MS)
-    } catch {
-      if (!alive) return
-      siblings = undefined
-      scheduleHerdr(HERDR_SLOW_MS)
-    } finally {
-      if (herdrInFlight === ac) herdrInFlight = undefined
-    }
-  }
+  // The source is chosen from the environment (HERDR_ENV, else REX_SESSION/REX_BLOCK); start it
+  // before the status line so its onChange subscription is live.
+  siblings = createSiblingSource({ pi, spawn: deps.spawn })
 
   // Install once, then re-assert shortly after: other extensions' session_start handlers may draw after ours.
   installHeader(ctx)
@@ -136,7 +112,6 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
   ctx.ui.setHiddenThinkingLabel("◆ Thought")
   ctx.ui.setWorkingIndicator()
   for (const delay of [0, 50]) settleTimers.push(setTimeout(() => pin("session_settle"), delay))
-  if (process.env.HERDR_ENV === "1") void probeHerdr()
 
   return {
     id,
@@ -146,10 +121,7 @@ export function createSession(pi: ExtensionAPI, ctx: ExtensionContext, deps: Ses
       if (!alive) return
       alive = false
       for (const timer of settleTimers.splice(0)) clearTimeout(timer)
-      if (herdrTimer) clearInterval(herdrTimer)
-      herdrTimer = undefined
-      herdrInFlight?.abort()
-      herdrInFlight = undefined
+      siblings?.dispose()
       siblings = undefined
       gitState.dispose()
       stopFooter()
