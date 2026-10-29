@@ -95,6 +95,8 @@ function siblingColor(status: string): "success" | "warning" | "error" | "accent
 export type StatusLineSources = {
   gitState: () => GitState | undefined
   siblings: () => Sibling[] | undefined
+  /** `⚙ 2 bg` while bash-tool processes run in the background; undefined otherwise. */
+  background?: () => string | undefined
   /** Fires when git state or the sibling list may have changed; the widget re-renders. */
   onChange: (listener: () => void) => () => void
 }
@@ -143,6 +145,8 @@ export function installCwd(ctx: ExtensionContext, sources: StatusLineSources): v
             const dirty = git.dirty ? ` ${theme.fg("warning", git.dirty)}` : ""
             right.push(`${theme.fg("dim", "⎇")} ${theme.fg("muted", git.branch)}${dirty}`)
           }
+          const background = sources.background?.()
+          if (background) right.push(theme.fg("warning", background))
           const siblings = sources.siblings()
           if (siblings && siblings.length > 0) {
             right.push(

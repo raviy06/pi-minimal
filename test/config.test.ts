@@ -30,7 +30,7 @@ test("defaults hideGauntletWidgets to false", (t) => {
 	const { agentDir, cwd } = setup(t)
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.equal(error.mock.callCount(), 0)
 })
 
@@ -39,7 +39,7 @@ test("global false overrides default", (t) => {
 	writeGlobal(agentDir, JSON.stringify({ hideGauntletWidgets: false, editDiff: "expanded" }))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: false })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.equal(error.mock.callCount(), 0)
 })
 
@@ -49,7 +49,7 @@ test("trusted project true overrides global false", (t) => {
 	writeProject(cwd, JSON.stringify({ hideGauntletWidgets: true, editDiff: "expanded" }))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: true, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: true, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.equal(error.mock.callCount(), 0)
 })
 
@@ -59,7 +59,7 @@ test("untrusted project false does not override global true", (t) => {
 	writeProject(cwd, JSON.stringify({ hideGauntletWidgets: false, editDiff: "expanded" }))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: false })
-	assert.deepEqual(config, { hideGauntletWidgets: true, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: true, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.equal(error.mock.callCount(), 0)
 })
 
@@ -69,7 +69,7 @@ test("omitted keys do not override", (t) => {
 	writeProject(cwd, JSON.stringify({}))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.equal(error.mock.callCount(), 0)
 })
 
@@ -79,7 +79,7 @@ test("unknown keys do not override", (t) => {
 	writeProject(cwd, JSON.stringify({ extra: true }))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.equal(error.mock.callCount(), 0)
 })
 
@@ -89,7 +89,7 @@ test("invalid JSON calls console.error and leaves the lower-precedence value unc
 	writeProject(cwd, "{")
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.ok(error.mock.callCount() >= 1)
 })
 
@@ -99,7 +99,7 @@ test("non-object root calls console.error and leaves the lower-precedence value 
 	writeProject(cwd, JSON.stringify(["hideGauntletWidgets", false]))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.ok(error.mock.callCount() >= 1)
 })
 
@@ -109,7 +109,7 @@ test("non-boolean hideGauntletWidgets calls console.error and leaves the lower-p
 	writeProject(cwd, JSON.stringify({ hideGauntletWidgets: "yes" }))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "expanded", backgroundShortcut: "ctrl+b" })
 	assert.ok(error.mock.callCount() >= 1)
 })
 
@@ -129,7 +129,20 @@ test("an invalid editDiff value is reported and does not override", (t) => {
 	writeProject(cwd, JSON.stringify({ editDiff: "sometimes" }))
 	const error = t.mock.method(console, "error")
 	const config = loadPiMinimalConfig({ agentDir, cwd, projectTrusted: true })
-	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "always" })
+	assert.deepEqual(config, { hideGauntletWidgets: false, editDiff: "always", backgroundShortcut: "ctrl+b" })
 	assert.equal(error.mock.callCount(), 1)
 	assert.match(String(error.mock.calls[0]!.arguments[0]), /editDiff must be one of "always", "never", "expanded"/)
+})
+
+test("backgroundShortcut accepts a key name or null and rejects other values", (t) => {
+	const { agentDir, cwd } = setup(t)
+	writeGlobal(agentDir, JSON.stringify({ backgroundShortcut: "ctrl+g" }))
+	assert.equal(loadPiMinimalConfig({ agentDir, cwd, projectTrusted: false }).backgroundShortcut, "ctrl+g")
+	writeGlobal(agentDir, JSON.stringify({ backgroundShortcut: null }))
+	assert.equal(loadPiMinimalConfig({ agentDir, cwd, projectTrusted: false }).backgroundShortcut, null)
+	const errors: string[] = []
+	t.mock.method(console, "error", (message: string) => { errors.push(message) })
+	writeGlobal(agentDir, JSON.stringify({ backgroundShortcut: 7 }))
+	assert.equal(loadPiMinimalConfig({ agentDir, cwd, projectTrusted: false }).backgroundShortcut, "ctrl+b")
+	assert.match(errors.join("\n"), /backgroundShortcut/)
 })

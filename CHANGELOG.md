@@ -12,6 +12,12 @@ Releases are cut automatically: when the `version` in `package.json` changes on
 
 ### Added
 
+- Background processes: `⚙ N bg` on the status line while processes left behind by `bash` tool
+  calls are running; `ctrl+b` / `/bg` opens an overlay listing each one with running/ended state and
+  duration, `k` kills the selection, `K` its process group. Attribution diffs `ps` around each bash
+  call using pi's detached process groups, so no command is rewritten. New `backgroundShortcut`
+  setting (`"ctrl+b"`; `null` disables the key).
+
 - Rex siblings: inside a Rex session (`REX_SESSION` + `REX_BLOCK`) the status line shows other
   panes' agent state, read from Rex's Program Status Protocol (OSC 7501) over one
   `rex events --json` stream instead of polling. Needs a reporter in each pi (an extension that

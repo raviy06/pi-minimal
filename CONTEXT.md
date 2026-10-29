@@ -38,6 +38,13 @@ When a word below has a narrower meaning than in everyday use, the narrower mean
 - **Code box** — the faint frame around fenced code blocks (`src/code-box.ts`, a pi-tui
   `Markdown.prototype.renderToken` patch).
 
+- **Background process** — a process a `bash` tool call left running after it returned
+  (`src/background.ts`). Found by diffing `ps` before/after the call: new, orphaned (ppid 1) and in a
+  *tracked group*, a process group whose leader (the tool shell) was born and died inside the call.
+  Groups are polled every 2 s until empty. A process is `running` or `ended` (gone from `ps`, kept
+  60 s; no exit code is knowable). Shown as `⚙ N bg` on the status line and listed in the
+  *background overlay* (`src/background-overlay.ts`, `/bg` or `backgroundShortcut`, default `ctrl+b`).
+
 ## Footer contributions (the extension point)
 
 - **Contribution** — data another extension publishes for pi-minimal to render in the footer,
